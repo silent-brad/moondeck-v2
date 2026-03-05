@@ -7,7 +7,7 @@ pub mod wifi;
 pub use display::{Display, Framebuffer};
 pub use fs::FileSystem;
 pub use http::HttpClient;
-pub use touch::TouchController;
+pub use touch::{GestureProcessor, TouchController};
 pub use wifi::WifiManager;
 
 use std::collections::HashMap;

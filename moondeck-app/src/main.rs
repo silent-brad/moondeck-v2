@@ -9,9 +9,9 @@ use log::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use moondeck_core::gfx::{Color, DrawContext, Font, DISPLAY_HEIGHT, DISPLAY_WIDTH};
-use moondeck_core::ui::{GestureDetector, PageManager, WidgetInstance};
+use moondeck_core::ui::{Event, Gesture, PageManager, WidgetInstance};
 use moondeck_core::util::FrameTimer;
-use moondeck_hal::{Display, EnvConfig, FileSystem, Framebuffer};
+use moondeck_hal::{Display, EnvConfig, FileSystem, Framebuffer, GestureProcessor, TouchController};
 use moondeck_lua::{LuaRuntime, WidgetPlugin};
 
 fn main() -> Result<()> {
@@ -55,6 +55,17 @@ fn main() -> Result<()> {
         data_pins,
         Some(peripherals.pins.gpio2.into()), // Backlight
     )?;
+
+    info!("Initializing touch controller...");
+    let mut touch_controller = TouchController::new(
+        peripherals.i2c0,
+        peripherals.pins.gpio19, // SDA
+        peripherals.pins.gpio20, // SCL
+        Some(peripherals.pins.gpio38), // INT pin (must be LOW during init for address 0x5D)
+        DISPLAY_WIDTH,
+        DISPLAY_HEIGHT,
+    )?;
+    info!("Touch controller initialized");
 
     info!("Mounting filesystem...");
     let fs = match FileSystem::mount("storage", "/data") {
@@ -118,7 +129,7 @@ fn main() -> Result<()> {
     info!("Initialized {} widget(s)", plugins.len());
 
     info!("Starting main loop...");
-    run_main_loop(&mut lua_runtime, &mut page_manager, &mut plugins, &mut display)?;
+    run_main_loop(&mut lua_runtime, &mut page_manager, &mut plugins, &mut display, &mut touch_controller)?;
 
     Ok(())
 }
@@ -128,10 +139,11 @@ fn run_main_loop(
     page_manager: &mut PageManager,
     plugins: &mut [(WidgetPlugin, WidgetInstance)],
     display: &mut Display,
+    touch_controller: &mut TouchController,
 ) -> Result<()> {
     let mut framebuffer = Framebuffer::new();
     let mut frame_timer = FrameTimer::new();
-    let _gesture_detector = GestureDetector::default();
+    let mut gesture_processor = GestureProcessor::new();
 
     info!("Main loop running - press Ctrl+C to exit");
 
@@ -142,6 +154,19 @@ fn run_main_loop(
             .unwrap_or(0);
 
         let delta_ms = frame_timer.tick(current_ms);
+
+        if let Ok(Some(touch_event)) = touch_controller.poll() {
+            if let Some(gesture) = gesture_processor.process(touch_event, current_ms) {
+                let event = Event::Gesture(gesture);
+                if page_manager.handle_event(&event) {
+                    match gesture {
+                        Gesture::SwipeLeft => info!("Swiped left - next page"),
+                        Gesture::SwipeRight => info!("Swiped right - previous page"),
+                        _ => {}
+                    }
+                }
+            }
+        }
 
         for (plugin, _widget) in plugins.iter() {
             let _ = plugin.update(lua_runtime, delta_ms);

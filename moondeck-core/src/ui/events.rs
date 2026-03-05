@@ -48,7 +48,7 @@ impl Default for GestureDetector {
             start_x: None,
             start_y: None,
             start_time: None,
-            threshold_px: 50,
+            threshold_px: 30,
             long_press_ms: 500,
         }
     }

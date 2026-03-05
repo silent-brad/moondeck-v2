@@ -25,20 +25,20 @@ impl<'d> TouchController<'d> {
         i2c: impl Peripheral<P = I2C> + 'd,
         sda: impl Peripheral<P = impl InputPin + OutputPin> + 'd,
         scl: impl Peripheral<P = impl InputPin + OutputPin> + 'd,
-        rst: Option<impl Peripheral<P = impl OutputPin> + 'd>,
-        _int: Option<impl Peripheral<P = impl InputPin> + 'd>,
+        int_pin: Option<impl Peripheral<P = impl InputPin + OutputPin> + 'd>,
         width: u32,
         height: u32,
     ) -> Result<Self> {
-        if let Some(rst_pin) = rst {
-            let mut rst_driver = PinDriver::output(rst_pin)?;
-            rst_driver.set_low()?;
-            FreeRtos::delay_ms(10);
-            rst_driver.set_high()?;
-            FreeRtos::delay_ms(100);
+        // The GT911 INT pin (GPIO38 on Elecrow) must be set LOW during init
+        // to select I2C address 0x5D. After init it becomes an input for interrupts.
+        if let Some(int) = int_pin {
+            let mut int_driver = PinDriver::output(int)?;
+            int_driver.set_low()?;
+            FreeRtos::delay_ms(50);
         }
 
-        let config = I2cConfig::new().baudrate(Hertz(400_000));
+        // Use slower I2C speed for better compatibility
+        let config = I2cConfig::new().baudrate(Hertz(100_000));
         let i2c_driver = I2cDriver::new(i2c, sda, scl, &config)
             .context("Failed to initialize I2C")?;
 
@@ -50,10 +50,34 @@ impl<'d> TouchController<'d> {
             height,
         };
 
-        if controller.read_register(GT911_PRODUCT_ID_REG, 4).is_err() {
+        // Wait for GT911 to be ready after power-up
+        FreeRtos::delay_ms(100);
+
+        // Try primary address first, then secondary
+        let mut found = false;
+        for retry in 0..3 {
+            if controller.read_register(GT911_PRODUCT_ID_REG, 4).is_ok() {
+                found = true;
+                break;
+            }
+            log::warn!("GT911 not responding at 0x5D, retry {}", retry + 1);
+            FreeRtos::delay_ms(50);
+        }
+
+        if !found {
             controller.address = GT911_ADDR_SECONDARY;
-            controller.read_register(GT911_PRODUCT_ID_REG, 4)
-                .context("GT911 not found at either address")?;
+            for retry in 0..3 {
+                if controller.read_register(GT911_PRODUCT_ID_REG, 4).is_ok() {
+                    found = true;
+                    break;
+                }
+                log::warn!("GT911 not responding at 0x14, retry {}", retry + 1);
+                FreeRtos::delay_ms(50);
+            }
+        }
+
+        if !found {
+            anyhow::bail!("GT911 not found at either address (0x5D or 0x14)");
         }
 
         log::info!("GT911 touch controller initialized at address 0x{:02X}", controller.address);
