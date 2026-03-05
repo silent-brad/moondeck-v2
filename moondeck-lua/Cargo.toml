@@ -1,0 +1,16 @@
+[package]
+name = "moondeck-lua"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+piccolo.workspace = true
+embedded-graphics.workspace = true
+moondeck-core.workspace = true
+moondeck-hal.workspace = true

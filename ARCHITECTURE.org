@@ -1,0 +1,286 @@
+#+title: Moondeck Architecture
+#+author: Brad White
+#+date: 2026-03-04
+
+* Overview
+
+Moondeck is a modular widget-based display system for ESP32-S3 based color LCD
+displays. Inspired by [[https://trmnl.com/][TRMNL]], but adapted for:
+
+- *Color LCD displays* (800×480 RGB565) instead of e-ink
+- *Lua-based components* instead of HTML/Liquid templates
+- *Client-side rendering* instead of server-rendered images
+
+** Design Philosophy
+
+| TRMNL                           | Moondeck                          |
+|---------------------------------+-----------------------------------|
+| E-ink (1-2 bit grayscale)       | Color LCD (RGB565, 16-bit)        |
+| HTML/CSS + Liquid templates     | Lua component library             |
+| Server-rendered PNG images      | Client-side Lua rendering         |
+| Minimal refresh (saves battery) | Configurable refresh rate (~30fps)|
+
+* Architecture Diagram
+
+#+begin_src
+┌─────────────────────────────────────────────────────────────────┐
+│                         moondeck-app                            │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                       main.rs                             │  │
+│  │  - Initialization & boot sequence                         │  │
+│  │  - Main event loop                                        │  │
+│  │  - Page/widget orchestration                              │  │
+│  └──────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│                        moondeck-lua                             │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐   │
+│  │   runtime.rs  │  │   plugin.rs   │  │     bindings/     │   │
+│  │ Lua VM setup  │  │ Widget loader │  │ gfx, net, env,    │   │
+│  │ Page parser   │  │ State manager │  │ device modules    │   │
+│  └───────────────┘  └───────────────┘  └───────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                        moondeck-hal                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐    │
+│  │ display/ │  │  touch/  │  │  wifi/   │  │  http/ + fs/ │    │
+│  │ RGB LCD  │  │  GT911   │  │ ESP WiFi │  │ HTTP client  │    │
+│  │ Buffer   │  │ Gestures │  │          │  │ SPIFFS       │    │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘    │
+├─────────────────────────────────────────────────────────────────┤
+│                        moondeck-core                            │
+│  ┌───────────────────┐  ┌────────────────────────────────────┐ │
+│  │       gfx/        │  │              ui/                   │ │
+│  │ Color, Font       │  │ Page, Widget, Event, Gesture       │ │
+│  │ DrawContext       │  │ PageManager, WidgetContext         │ │
+│  └───────────────────┘  └────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+#+end_src
+
+* Crate Overview
+
+** moondeck-core
+Platform-agnostic core types and abstractions:
+- =gfx/= - Color definitions, fonts, and DrawContext for rendering
+- =ui/= - Page, Widget, Event, and Gesture types
+- =util/= - Frame timing and helper utilities
+
+** moondeck-hal  
+Hardware abstraction layer for ESP32-S3:
+- =display/= - RGB LCD panel driver and framebuffer
+- =touch/= - GT911 touch controller and gesture detection
+- =wifi/= - WiFi connection management
+- =http/= - HTTP client for API requests
+- =fs/= - SPIFFS filesystem access
+
+** moondeck-lua
+Lua runtime and widget system:
+- =runtime.rs= - Lua VM initialization and page loading
+- =plugin.rs= - Widget lifecycle management
+- =bindings/= - Lua API modules (gfx, net, env, device)
+
+** moondeck-app
+Main application binary:
+- Device initialization
+- Main event loop
+- Widget rendering pipeline
+
+* Configuration System
+
+Configuration is done entirely in Lua, stored on the SPIFFS filesystem:
+
+#+begin_src text
+/spiffs/
+  .env                    # Environment variables (WiFi, API keys)
+  config/
+    init.lua              # Boot script, global utilities
+    pages.lua             # Page and widget definitions
+    widgets/
+      clock.lua           # Clock widget
+      weather.lua         # Weather widget (API fetch)
+      status.lua          # System status widget
+      quote.lua           # Quote of the day widget
+      sysinfo.lua         # System information widget
+      ...custom.lua       # Your custom widgets
+#+end_src
+
+** Page Configuration (pages.lua)
+
+#+begin_src lua
+return {
+    pages = {
+        {
+            id = "home",
+            title = "Home",
+            background = "#1a1a2e",
+            widgets = {
+                {
+                    module = "widgets.clock",
+                    x = 20, y = 20,
+                    w = 760, h = 180,
+                    update_interval = 1000,
+                    opts = { show_seconds = true },
+                },
+            },
+        },
+    },
+}
+#+end_src
+
+** Widget Structure
+
+Each widget is a Lua module implementing these callbacks:
+
+#+begin_src lua
+local M = {}
+
+function M.init(ctx)
+    -- Called once when widget loads
+    -- ctx contains: x, y, width, height, opts
+    return { state = "initial" }
+end
+
+function M.update(state, delta_ms)
+    -- Called every update_interval
+    -- Modify state as needed
+end
+
+function M.render(state, gfx)
+    -- Called every frame
+    -- Draw using gfx API
+    gfx:fill_rect(0, 0, 100, 100, "#ff0000")
+    gfx:text(10, 50, "Hello", "white", "large")
+end
+
+function M.on_event(state, event)
+    -- Handle touch events
+    -- Return true if handled
+    if event.type == "tap" then
+        return true
+    end
+    return false
+end
+
+return M
+#+end_src
+
+* Lua API Reference
+
+** gfx Module (Graphics)
+
+#+begin_src lua
+gfx:clear(color)
+gfx:fill_rect(x, y, w, h, color)
+gfx:stroke_rect(x, y, w, h, color, thickness?)
+gfx:fill_rounded_rect(x, y, w, h, radius, color)
+gfx:fill_circle(cx, cy, radius, color)
+gfx:stroke_circle(cx, cy, radius, color, thickness?)
+gfx:line(x1, y1, x2, y2, color, thickness?)
+gfx:text(x, y, text, color, font)  -- fonts: "small", "medium", "large", "xlarge"
+
+-- Color utilities
+gfx.rgb(r, g, b)  -- Returns hex string "#rrggbb"
+gfx.color.black, gfx.color.white, gfx.color.red, ...
+#+end_src
+
+** net Module (Networking)
+
+#+begin_src lua
+-- HTTP requests
+local response = net.http_get(url, headers?, timeout_ms?)
+local response = net.http_post(url, body, content_type?)
+-- response = { status = 200, body = "...", ok = true/false, error? = "..." }
+
+-- JSON utilities
+local table = net.json_decode(json_string)
+local json = net.json_encode(table)
+#+end_src
+
+** env Module (Environment)
+
+#+begin_src lua
+local value = env.get("WIFI_SSID")           -- Returns nil if not set
+local value = env.get_or("KEY", "default")   -- Returns default if not set
+#+end_src
+
+** device Module (Device Info)
+
+#+begin_src lua
+local ms = device.millis()           -- Milliseconds since epoch
+local s = device.seconds()           -- Seconds since epoch
+local w = device.screen_width()      -- 800
+local h = device.screen_height()     -- 480
+
+device.sleep_ms(100)                 -- Sleep for 100ms
+device.log_info("message")           -- Log to serial
+device.log_warn("message")
+device.log_error("message")
+
+print(...)                           -- Redirects to log_info
+#+end_src
+
+* Directory Structure Summary
+
+#+begin_src text
+moondeck-v2/
+  .env                    # WiFi/API credentials (gitignored)
+  .env.example            # Template for .env
+  .cargo/config.toml      # Cargo/ESP build configuration
+  Cargo.toml              # Workspace definition
+  flake.nix               # Nix development environment
+  rust-toolchain.toml     # ESP Rust toolchain specification
+  partitions.csv          # ESP32 partition table
+  sdkconfig.defaults      # ESP-IDF SDK configuration
+  
+  moondeck-app/           # Main application
+    Cargo.toml
+    build.rs
+    src/main.rs
+    
+  moondeck-core/          # Core types and abstractions
+    Cargo.toml
+    src/
+      lib.rs
+      gfx/{mod,color,context,font}.rs
+      ui/{mod,events,page,widget}.rs
+      util/{mod,timing}.rs
+      
+  moondeck-hal/           # Hardware abstraction
+    Cargo.toml
+    src/
+      lib.rs
+      display/{mod,framebuffer,rgb_panel}.rs
+      touch/{mod,gt911,gestures}.rs
+      wifi/mod.rs
+      http/mod.rs
+      fs/{mod,spiffs}.rs
+      
+  moondeck-lua/           # Lua integration
+    Cargo.toml
+    src/
+      lib.rs
+      runtime.rs
+      plugin.rs
+      bindings/{mod,gfx,net,env,device}.rs
+      
+  config/                 # Lua configuration (copied to SPIFFS)
+    init.lua
+    pages.lua
+    widgets/
+      clock.lua
+      status.lua
+      quote.lua
+      weather.lua
+      sysinfo.lua
+
+  ARCHITECTURE.org        # This file
+  README.org              # Project README
+  PROMPT.md               # Original prompt
+#+end_src
+
+* References
+
+- [[https://trmnl.com/framework][TRMNL Framework UI]]
+- [[https://docs.trmnl.com/][TRMNL Documentation]]
+- [[https://github.com/usetrmnl/firmware][TRMNL Firmware (GPL-3)]]
+- [[https://github.com/esp-rs/esp-idf-sys][esp-idf-sys - ESP-IDF bindings for Rust]]
+- [[https://github.com/mlua-rs/mlua][mlua - Lua bindings for Rust]]
+- [[https://docs.rs/embedded-graphics/latest/embedded_graphics/][embedded-graphics documentation]]

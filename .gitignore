@@ -1,0 +1,35 @@
+# Rust
+/target/
+.cargo
+.embuild
+Cargo.lock
+
+# ESP toolchain
+/.esp/
+sdkconfig
+sdkconfig.old
+
+sdkconfig.defaults
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.elf
+*.bin
+*.map
+
+# Nix
+result
+result-*

@@ -1,0 +1,133 @@
+use anyhow::{Context, Result};
+use esp_idf_hal::delay::FreeRtos;
+use esp_idf_hal::gpio::*;
+use esp_idf_hal::i2c::{I2c, I2cConfig, I2cDriver};
+use esp_idf_hal::peripheral::Peripheral;
+use esp_idf_hal::units::Hertz;
+use moondeck_core::ui::{TouchEvent, TouchPhase};
+
+const GT911_ADDR_PRIMARY: u8 = 0x5D;
+const GT911_ADDR_SECONDARY: u8 = 0x14;
+const GT911_PRODUCT_ID_REG: u16 = 0x8140;
+const GT911_TOUCH_STATUS_REG: u16 = 0x814E;
+const GT911_POINT1_REG: u16 = 0x814F;
+
+pub struct TouchController<'d> {
+    i2c: I2cDriver<'d>,
+    address: u8,
+    last_touch: Option<TouchEvent>,
+    width: u32,
+    height: u32,
+}
+
+impl<'d> TouchController<'d> {
+    pub fn new<I2C: I2c>(
+        i2c: impl Peripheral<P = I2C> + 'd,
+        sda: impl Peripheral<P = impl InputPin + OutputPin> + 'd,
+        scl: impl Peripheral<P = impl InputPin + OutputPin> + 'd,
+        rst: Option<impl Peripheral<P = impl OutputPin> + 'd>,
+        _int: Option<impl Peripheral<P = impl InputPin> + 'd>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self> {
+        if let Some(rst_pin) = rst {
+            let mut rst_driver = PinDriver::output(rst_pin)?;
+            rst_driver.set_low()?;
+            FreeRtos::delay_ms(10);
+            rst_driver.set_high()?;
+            FreeRtos::delay_ms(100);
+        }
+
+        let config = I2cConfig::new().baudrate(Hertz(400_000));
+        let i2c_driver = I2cDriver::new(i2c, sda, scl, &config)
+            .context("Failed to initialize I2C")?;
+
+        let mut controller = Self {
+            i2c: i2c_driver,
+            address: GT911_ADDR_PRIMARY,
+            last_touch: None,
+            width,
+            height,
+        };
+
+        if controller.read_register(GT911_PRODUCT_ID_REG, 4).is_err() {
+            controller.address = GT911_ADDR_SECONDARY;
+            controller.read_register(GT911_PRODUCT_ID_REG, 4)
+                .context("GT911 not found at either address")?;
+        }
+
+        log::info!("GT911 touch controller initialized at address 0x{:02X}", controller.address);
+
+        Ok(controller)
+    }
+
+    fn write_register(&mut self, reg: u16, data: &[u8]) -> Result<()> {
+        let mut buf = vec![0u8; 2 + data.len()];
+        buf[0] = (reg >> 8) as u8;
+        buf[1] = (reg & 0xFF) as u8;
+        buf[2..].copy_from_slice(data);
+
+        self.i2c.write(self.address, &buf, 100)
+            .map_err(|e| anyhow::anyhow!("I2C write error: {:?}", e))?;
+        Ok(())
+    }
+
+    fn read_register(&mut self, reg: u16, len: usize) -> Result<Vec<u8>> {
+        let reg_bytes = [(reg >> 8) as u8, (reg & 0xFF) as u8];
+        let mut buf = vec![0u8; len];
+
+        self.i2c.write(self.address, &reg_bytes, 100)
+            .map_err(|e| anyhow::anyhow!("I2C write error: {:?}", e))?;
+        self.i2c.read(self.address, &mut buf, 100)
+            .map_err(|e| anyhow::anyhow!("I2C read error: {:?}", e))?;
+
+        Ok(buf)
+    }
+
+    pub fn poll(&mut self) -> Result<Option<TouchEvent>> {
+        let status = self.read_register(GT911_TOUCH_STATUS_REG, 1)?;
+        let num_touches = status[0] & 0x0F;
+        let buffer_ready = (status[0] & 0x80) != 0;
+
+        if !buffer_ready {
+            return Ok(None);
+        }
+
+        self.write_register(GT911_TOUCH_STATUS_REG, &[0])?;
+
+        if num_touches == 0 {
+            if let Some(last) = self.last_touch.take() {
+                return Ok(Some(TouchEvent {
+                    x: last.x,
+                    y: last.y,
+                    phase: TouchPhase::Ended,
+                }));
+            }
+            return Ok(None);
+        }
+
+        let point_data = self.read_register(GT911_POINT1_REG, 8)?;
+
+        let x = ((point_data[1] as u32) | ((point_data[2] as u32) << 8)) as i32;
+        let y = ((point_data[3] as u32) | ((point_data[4] as u32) << 8)) as i32;
+
+        let x = x.clamp(0, self.width as i32 - 1);
+        let y = y.clamp(0, self.height as i32 - 1);
+
+        let phase = if self.last_touch.is_some() {
+            TouchPhase::Moved
+        } else {
+            TouchPhase::Started
+        };
+
+        let event = TouchEvent { x, y, phase };
+        self.last_touch = Some(event);
+
+        Ok(Some(event))
+    }
+
+    pub fn is_touched(&mut self) -> Result<bool> {
+        let status = self.read_register(GT911_TOUCH_STATUS_REG, 1)?;
+        Ok((status[0] & 0x0F) > 0)
+    }
+}

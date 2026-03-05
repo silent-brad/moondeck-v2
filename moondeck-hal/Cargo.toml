@@ -1,0 +1,17 @@
+[package]
+name = "moondeck-hal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+embedded-graphics-core.workspace = true
+esp-idf-sys.workspace = true
+esp-idf-hal.workspace = true
+esp-idf-svc.workspace = true
+moondeck-core.workspace = true

@@ -1,0 +1,43 @@
+[workspace]
+members = [
+    "moondeck-app",
+    "moondeck-core",
+    "moondeck-hal",
+    "moondeck-lua",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Brad White"]
+
+[workspace.dependencies]
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+log = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Graphics
+embedded-graphics = "0.8"
+embedded-graphics-core = "0.4"
+
+# ESP-IDF
+esp-idf-sys = { version = "0.36", features = ["binstart"] }
+esp-idf-svc = { version = "0.51", features = ["experimental"] }
+esp-idf-hal = "0.45"
+
+# Lua - pure Rust implementation (works on ESP32/Xtensa)
+piccolo = "0.3"
+
+# Internal crates
+moondeck-core = { path = "moondeck-core" }
+moondeck-hal = { path = "moondeck-hal" }
+moondeck-lua = { path = "moondeck-lua" }

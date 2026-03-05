@@ -1,0 +1,24 @@
+[package]
+name = "moondeck-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "moondeck"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+esp-idf-sys.workspace = true
+esp-idf-svc.workspace = true
+esp-idf-hal.workspace = true
+moondeck-core.workspace = true
+moondeck-hal.workspace = true
+moondeck-lua.workspace = true
+
+[build-dependencies]
+embuild = { version = "0.32", features = ["espidf"] }
