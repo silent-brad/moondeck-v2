@@ -105,7 +105,7 @@
             echo ""
             echo "  Build & flash:"
             echo "    cargo build --release -p moondeck-app"
-            echo "    espflash flash target/xtensa-esp32s3-espidf/release/moondeck --monitor"
+            echo "    espflash flash target/xtensa-esp32s3-espidf/release/moondeck --partition-table target/xtensa-esp32s3-espidf/release/partition-table.bin --monitor"
             echo ""
           '';
 

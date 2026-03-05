@@ -25,13 +25,13 @@ impl Default for DisplayConfig {
 impl DisplayConfig {
     pub fn elecrow_5inch() -> Self {
         Self {
-            hsync_pulse_width: 4,
-            hsync_back_porch: 8,
-            hsync_front_porch: 8,
-            vsync_pulse_width: 4,
+            hsync_pulse_width: 1,
+            hsync_back_porch: 40,
+            hsync_front_porch: 40,
+            vsync_pulse_width: 1,
             vsync_back_porch: 8,
-            vsync_front_porch: 8,
-            pclk_hz: 15_000_000,
+            vsync_front_porch: 4,
+            pclk_hz: 16_000_000,
             pclk_active_neg: true,
         }
     }
@@ -40,6 +40,7 @@ impl DisplayConfig {
 pub struct Display {
     panel_handle: sys::esp_lcd_panel_handle_t,
     _backlight_pin: Option<PinDriver<'static, AnyOutputPin, Output>>,
+    fb_ptr: *mut u8,
 }
 
 impl Display {
@@ -105,7 +106,7 @@ impl Display {
             data_width: 16,
             bits_per_pixel: 16,
             num_fbs: 1,
-            bounce_buffer_size_px: 10 * DISPLAY_WIDTH as usize,
+            bounce_buffer_size_px: 8000,
             sram_trans_align: 8,
             psram_trans_align: 64,
             hsync_gpio_num: hsync_pin.into_ref().pin(),
@@ -138,7 +139,7 @@ impl Display {
                     1, // fb_in_psram
                     0, // double_fb
                     0, // no_fb
-                    0, // bb_invalidate_cache
+                    1, // bb_invalidate_cache
                 ),
                 ..Default::default()
             },
@@ -154,31 +155,33 @@ impl Display {
 
             sys::esp!(sys::esp_lcd_panel_init(panel_handle))
                 .context("Failed to initialize panel")?;
-
-            // Mirror both axes for correct orientation (Elecrow 5-inch)
-            sys::esp!(sys::esp_lcd_panel_mirror(panel_handle, true, true))
-                .context("Failed to mirror panel")?;
         }
 
-        log::info!("Display initialized: {}x{}", DISPLAY_WIDTH, DISPLAY_HEIGHT);
+        // Get the panel's framebuffer pointer
+        let mut fb_ptrs: [*mut std::ffi::c_void; 2] = [std::ptr::null_mut(); 2];
+        unsafe {
+            sys::esp!(sys::esp_lcd_rgb_panel_get_frame_buffer(
+                panel_handle,
+                1,
+                fb_ptrs.as_mut_ptr()
+            ))
+            .context("Failed to get framebuffer pointer")?;
+        }
+
+        log::info!("Display initialized: {}x{}, fb_ptr: {:?}", DISPLAY_WIDTH, DISPLAY_HEIGHT, fb_ptrs[0]);
 
         Ok(Self {
             panel_handle,
             _backlight_pin: backlight_driver,
+            fb_ptr: fb_ptrs[0] as *mut u8,
         })
     }
 
     pub fn flush(&mut self, framebuffer: &Framebuffer) -> Result<()> {
+        let src = framebuffer.as_bytes();
+        let size = src.len();
         unsafe {
-            sys::esp!(sys::esp_lcd_panel_draw_bitmap(
-                self.panel_handle,
-                0,
-                0,
-                DISPLAY_WIDTH as i32,
-                DISPLAY_HEIGHT as i32,
-                framebuffer.as_bytes().as_ptr() as *const _,
-            ))
-            .context("Failed to draw bitmap")?;
+            std::ptr::copy_nonoverlapping(src.as_ptr(), self.fb_ptr, size);
         }
         Ok(())
     }

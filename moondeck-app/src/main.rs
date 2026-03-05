@@ -71,11 +71,25 @@ fn main() -> Result<()> {
             let content = fs.read_file(".env").unwrap_or_default();
             EnvConfig::load_from_str(&content)
         } else {
-            info!("No .env file found");
-            EnvConfig::new()
+            // Try embedded .env from compile time
+            let embedded = include_str!("../../.env");
+            if !embedded.is_empty() {
+                info!("Using embedded .env configuration");
+                EnvConfig::load_from_str(embedded)
+            } else {
+                info!("No .env file found");
+                EnvConfig::new()
+            }
         }
     } else {
-        EnvConfig::new()
+        // No SPIFFS, use embedded .env
+        let embedded = include_str!("../../.env");
+        if !embedded.is_empty() {
+            info!("Using embedded .env configuration");
+            EnvConfig::load_from_str(embedded)
+        } else {
+            EnvConfig::new()
+        }
     };
 
     info!("Initializing Lua runtime...");
@@ -137,7 +151,7 @@ fn run_main_loop(
             .current_page()
             .and_then(|p| p.background_color.as_ref())
             .and_then(|c| Color::from_hex(c))
-            .unwrap_or(Color::BLACK);
+            .unwrap_or(Color::RED);
 
         {
             let mut draw_ctx = DrawContext::new(&mut framebuffer);
@@ -168,8 +182,19 @@ fn run_main_loop(
                 );
 
                 for (plugin, widget) in plugins.iter() {
-                    if page.widgets.iter().any(|w| w.module == widget.module) {
-                        let _ = plugin.render(lua_runtime, &widget.context, &mut draw_ctx);
+                    let matches = page.widgets.iter().any(|w| w.module == widget.module);
+                    if frame_timer.frame_count() == 1 {
+                        info!(
+                            "Widget '{}': matches={}, ctx=({},{},{}x{})",
+                            widget.module, matches,
+                            widget.context.x, widget.context.y,
+                            widget.context.width, widget.context.height
+                        );
+                    }
+                    if matches {
+                        if let Err(e) = plugin.render(lua_runtime, &widget.context, &mut draw_ctx) {
+                            warn!("Render error for '{}': {}", widget.module, e);
+                        }
                     }
                 }
             }
