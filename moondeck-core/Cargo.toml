@@ -12,3 +12,5 @@ serde.workspace = true
 serde_json.workspace = true
 embedded-graphics.workspace = true
 embedded-graphics-core.workspace = true
+embedded-ttf.workspace = true
+rusttype.workspace = true

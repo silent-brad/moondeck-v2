@@ -1,3 +1,4 @@
+use super::ttf_font::{font_bytes, TtfFont};
 use super::{Color, Font};
 use embedded_graphics::{
     mono_font::{ascii::*, MonoTextStyle},
@@ -6,6 +7,8 @@ use embedded_graphics::{
     primitives::{Circle, Line, PrimitiveStyle, Rectangle, RoundedRectangle, Triangle},
     text::Text,
 };
+use embedded_ttf::FontTextStyleBuilder;
+use rusttype::Font as RustTypeFont;
 
 pub const DISPLAY_WIDTH: u32 = 800;
 pub const DISPLAY_HEIGHT: u32 = 480;
@@ -163,5 +166,16 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
 
     pub fn pixel(&mut self, x: i32, y: i32, color: Color) {
         let _ = Pixel(self.translate(x, y), Rgb565::from(color)).draw(self.target);
+    }
+
+    pub fn text_ttf(&mut self, x: i32, y: i32, s: &str, color: Color, font: TtfFont) {
+        let rgb_color = Rgb565::from(color);
+        let bytes = font_bytes(font.family, font.weight, font.style);
+        let ttf_font = RustTypeFont::try_from_bytes(bytes).expect("valid embedded TTF");
+        let style = FontTextStyleBuilder::new(ttf_font)
+            .font_size(font.size)
+            .text_color(rgb_color)
+            .build();
+        let _ = Text::new(s, self.translate(x, y), style).draw(self.target);
     }
 }

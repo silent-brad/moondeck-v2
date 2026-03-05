@@ -8,8 +8,9 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use log::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use moondeck_core::gfx::{Color, DrawContext, Font, DISPLAY_HEIGHT, DISPLAY_WIDTH};
+use moondeck_core::gfx::{Color, DrawContext, DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use moondeck_core::ui::{Event, Gesture, PageManager, WidgetInstance};
+use moondeck_core::TtfFont;
 use moondeck_core::util::FrameTimer;
 use moondeck_hal::{Display, EnvConfig, FileSystem, Framebuffer, GestureProcessor, TouchController};
 use moondeck_lua::{LuaRuntime, WidgetPlugin};
@@ -189,21 +190,21 @@ fn run_main_loop(
                     page_manager.page_count(),
                     &page.title
                 );
-                draw_ctx.text(
+                draw_ctx.text_ttf(
                     10,
                     DISPLAY_HEIGHT as i32 - 20,
                     &page_indicator,
                     Color::from_hex("#9EB8A0").unwrap_or(Color::GRAY),
-                    Font::Small,
+                    TtfFont::inter(24),
                 );
 
                 let fps_text = format!("FPS: {:.1}", frame_timer.fps());
-                draw_ctx.text(
+                draw_ctx.text_ttf(
                     DISPLAY_WIDTH as i32 - 80,
                     DISPLAY_HEIGHT as i32 - 20,
                     &fps_text,
                     Color::from_hex("#9EB8A0").unwrap_or(Color::GRAY),
-                    Font::Small,
+                    TtfFont::inter(24),
                 );
 
                 for (plugin, widget) in plugins.iter() {

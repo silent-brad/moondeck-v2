@@ -1,0 +1,23 @@
+#+TITLE: Moondeck v2 - Agent Instructions
+
+** Build Commands
+- `nix develop` - Enter development shell (provides ESP toolchain)
+- `cargo build --release -p moondeck-app` - Build main application
+- `cargo build -p <crate>` - Build specific crate (moondeck-core, moondeck-hal, moondeck-lua)
+- `cargo check` - Type check all crates
+- `espflash flash target/xtensa-esp32s3-espidf/release/moondeck --partition-table target/xtensa-esp32s3-espidf/release/partition-table.bin --monitor` - Flash & monitor
+
+** Architecture
+Rust workspace for ESP32-S3 color LCD cyberdeck with Lua widget system:
+- **moondeck-app**: Main binary (init, event loop, rendering pipeline)
+- **moondeck-core**: Platform-agnostic types (gfx/, ui/, util/)
+- **moondeck-hal**: Hardware abstraction (display, touch/GT911, wifi, http, fs/SPIFFS)
+- **moondeck-lua**: Lua VM via piccolo (runtime, plugin lifecycle, bindings)
+- **config/**: Lua widgets (pages.lua, widgets/*.lua)
+
+** Code Style
+- Rust 2021 edition, ESP toolchain (`channel = "esp"`)
+- Error handling: `anyhow` for apps, `thiserror` for libraries
+- Use workspace dependencies from root Cargo.toml
+- Graphics via `embedded-graphics`; colors as RGB565
+- Widgets are Lua modules with `init/update/render/on_event` callbacks

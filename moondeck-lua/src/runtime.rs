@@ -68,8 +68,7 @@ fn create_demo_pages() -> Vec<Page> {
                     .with_update_interval(1000),
             )
             .with_widget(
-                WidgetInstance::new("status", 400, 20, 360, 180)
-                //WidgetInstance::new("status", 400, 20, 380, 180)
+                WidgetInstance::new("status", 400, 20, 380, 180)
                     .with_update_interval(1000),
                     //.with_update_interval(5000),
             )
