@@ -9,11 +9,11 @@
 
 ** Architecture
 Rust workspace for ESP32-S3 color LCD cyberdeck with Lua widget system:
--*moondeck-app*: Main binary (init, event loop, rendering pipeline)
--*moondeck-core*: Platform-agnostic types (gfx/, ui/, util/)
--*moondeck-hal*: Hardware abstraction (display, touch/GT911, wifi, http, fs/SPIFFS)
--*moondeck-lua*: Lua VM via piccolo (runtime, plugin lifecycle, bindings)
--*config/*: Lua widgets (pages.lua, widgets/*.lua)
+-moondeck-app: Main binary (init, event loop, rendering pipeline)
+-moondeck-core: Platform-agnostic types (gfx/, ui/, util/)
+-moondeck-hal: Hardware abstraction (display, touch/GT911, wifi, http, fs/SPIFFS)
+-moondeck-lua: Lua VM via piccolo (runtime, plugin lifecycle, bindings)
+-config/: Lua widgets (pages.lua, widgets/*.lua)
 
 ** Code Style
 - Rust 2021 edition, ESP toolchain (~channel = "esp"~)
