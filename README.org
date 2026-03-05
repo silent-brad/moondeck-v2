@@ -15,6 +15,12 @@ Cyberdeck display system for ESP32-S3 color LCD panels, configured entirely in L
 - 👆 *Touch & Gestures* - Swipe between pages, tap to interact
 - 🦀 *Built with Rust* - Safe, fast, and reliable
 
+* Stack
+[[https://api.iconify.design/logos:rust.svg]]
+[[https://api.iconify.design/logos:esp32.svg]]
+[[https://api.iconify.design/logos:lua.svg]]
+[[https://api.iconify.design/vscode-icons:file-type-nix.svg]]
+
 * Display
 
 - [[https://www.amazon.com/ELECROW-Dual-Core-Compatible-PlatformIO-MicroPython/dp/B0DL5WB7RQ/][Elecrow ESP32 5-inch Display]] (800×480 RGB565)
