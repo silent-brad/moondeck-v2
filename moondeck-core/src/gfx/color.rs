@@ -66,6 +66,15 @@ impl Color {
             b: (self.b as f32 + (other.b as f32 - self.b as f32) * t) as u8,
         }
     }
+
+    pub fn with_alpha(&self, alpha: u8) -> Self {
+        let factor = alpha as u16;
+        Self {
+            r: ((self.r as u16 * factor) / 255) as u8,
+            g: ((self.g as u16 * factor) / 255) as u8,
+            b: ((self.b as u16 * factor) / 255) as u8,
+        }
+    }
 }
 
 impl From<Color> for Rgb565 {

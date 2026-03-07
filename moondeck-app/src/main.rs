@@ -329,8 +329,8 @@ fn run_main_loop(
             }
         }
 
-        // Process touch input
-        if let Ok(Some(touch_event)) = touch_controller.poll() {
+        // Process all pending touch events
+        while let Ok(Some(touch_event)) = touch_controller.poll() {
             if let Some(gesture) = gesture_processor.process(touch_event, current_ms) {
                 let event = Event::Gesture(gesture.clone());
                 if page_manager.handle_event(&event) {

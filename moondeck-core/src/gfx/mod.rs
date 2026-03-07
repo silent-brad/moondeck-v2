@@ -1,8 +1,10 @@
+mod bitmap_font;
 mod color;
 mod context;
 mod font;
 mod ttf_font;
 
+pub use bitmap_font::{BitmapFont, BitmapGlyph};
 pub use color::Color;
 pub use context::{DrawContext, DISPLAY_HEIGHT, DISPLAY_WIDTH, FRAMEBUFFER_SIZE};
 pub use font::Font;

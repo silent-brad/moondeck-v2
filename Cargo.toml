@@ -28,8 +28,6 @@ serde_json = "1"
 # Graphics
 embedded-graphics = "0.8"
 embedded-graphics-core = "0.4"
-embedded-ttf = "0.2"
-rusttype = "0.9"
 
 # ESP-IDF
 esp-idf-sys = { version = "0.36", features = ["binstart"] }

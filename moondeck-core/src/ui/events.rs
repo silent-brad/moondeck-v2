@@ -38,6 +38,8 @@ pub struct GestureDetector {
     start_x: Option<i32>,
     start_y: Option<i32>,
     start_time: Option<u64>,
+    current_x: i32,
+    current_y: i32,
     threshold_px: i32,
     long_press_ms: u64,
 }
@@ -48,8 +50,10 @@ impl Default for GestureDetector {
             start_x: None,
             start_y: None,
             start_time: None,
-            threshold_px: 20,
-            long_press_ms: 70,
+            current_x: 0,
+            current_y: 0,
+            threshold_px: 30,
+            long_press_ms: 500,
         }
     }
 }
@@ -68,10 +72,16 @@ impl GestureDetector {
             TouchPhase::Started => {
                 self.start_x = Some(touch.x);
                 self.start_y = Some(touch.y);
+                self.current_x = touch.x;
+                self.current_y = touch.y;
                 self.start_time = Some(current_time_ms);
                 None
             }
-            TouchPhase::Moved => None,
+            TouchPhase::Moved => {
+                self.current_x = touch.x;
+                self.current_y = touch.y;
+                None
+            }
             TouchPhase::Ended | TouchPhase::Cancelled => {
                 let (sx, sy, st) = match (self.start_x, self.start_y, self.start_time) {
                     (Some(x), Some(y), Some(t)) => (x, y, t),
@@ -82,8 +92,8 @@ impl GestureDetector {
                 self.start_y = None;
                 self.start_time = None;
 
-                let dx = touch.x - sx;
-                let dy = touch.y - sy;
+                let dx = self.current_x - sx;
+                let dy = self.current_y - sy;
                 let dt = current_time_ms.saturating_sub(st);
 
                 let abs_dx = dx.abs();

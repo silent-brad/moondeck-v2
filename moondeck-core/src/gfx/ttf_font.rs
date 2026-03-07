@@ -92,32 +92,3 @@ impl Default for TtfFont {
         Self::inter(16)
     }
 }
-
-pub(crate) fn font_bytes(family: FontFamily, weight: FontWeight, style: FontStyle) -> &'static [u8] {
-    match (family, weight, style) {
-        (FontFamily::Inter, FontWeight::Regular, FontStyle::Normal) => {
-            include_bytes!("../assets/fonts/Inter/Inter-Regular.ttf")
-        }
-        (FontFamily::Inter, FontWeight::Regular, FontStyle::Italic) => {
-            include_bytes!("../assets/fonts/Inter/Inter-Italic.ttf")
-        }
-        (FontFamily::Inter, FontWeight::Bold, FontStyle::Normal) => {
-            include_bytes!("../assets/fonts/Inter/Inter-Bold.ttf")
-        }
-        (FontFamily::Inter, FontWeight::Bold, FontStyle::Italic) => {
-            include_bytes!("../assets/fonts/Inter/Inter-BoldItalic.ttf")
-        }
-        (FontFamily::EBGaramond, FontWeight::Regular, FontStyle::Normal) => {
-            include_bytes!("../assets/fonts/EBGaramond/EBGaramond-Regular.ttf")
-        }
-        (FontFamily::EBGaramond, FontWeight::Regular, FontStyle::Italic) => {
-            include_bytes!("../assets/fonts/EBGaramond/EBGaramond-Italic.ttf")
-        }
-        (FontFamily::EBGaramond, FontWeight::Bold, FontStyle::Normal) => {
-            include_bytes!("../assets/fonts/EBGaramond/EBGaramond-Bold.ttf")
-        }
-        (FontFamily::EBGaramond, FontWeight::Bold, FontStyle::Italic) => {
-            include_bytes!("../assets/fonts/EBGaramond/EBGaramond-BoldItalic.ttf")
-        }
-    }
-}

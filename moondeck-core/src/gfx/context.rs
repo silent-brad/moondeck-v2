@@ -1,4 +1,5 @@
-use super::ttf_font::{font_bytes, TtfFont};
+use super::bitmap_font::get_bitmap_font;
+use super::ttf_font::TtfFont;
 use super::{Color, Font};
 use embedded_graphics::{
     mono_font::{ascii::*, MonoTextStyle},
@@ -7,8 +8,6 @@ use embedded_graphics::{
     primitives::{Circle, Line, PrimitiveStyle, Rectangle, RoundedRectangle, Triangle},
     text::Text,
 };
-use embedded_ttf::FontTextStyleBuilder;
-use rusttype::Font as RustTypeFont;
 
 pub const DISPLAY_WIDTH: u32 = 800;
 pub const DISPLAY_HEIGHT: u32 = 480;
@@ -169,13 +168,36 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
     }
 
     pub fn text_ttf(&mut self, x: i32, y: i32, s: &str, color: Color, font: TtfFont) {
-        let rgb_color = Rgb565::from(color);
-        let bytes = font_bytes(font.family, font.weight, font.style);
-        let ttf_font = RustTypeFont::try_from_bytes(bytes).expect("valid embedded TTF");
-        let style = FontTextStyleBuilder::new(ttf_font)
-            .font_size(font.size)
-            .text_color(rgb_color)
-            .build();
-        let _ = Text::new(s, self.translate(x, y), style).draw(self.target);
+        let bitmap_font = get_bitmap_font(font.family, font.weight, font.style, font.size);
+        self.text_bitmap(x, y, s, color, bitmap_font);
+    }
+
+    pub fn text_bitmap(&mut self, x: i32, y: i32, s: &str, color: Color, font: &super::BitmapFont) {
+        let mut cursor_x = x;
+        let base_y = y + font.ascent as i32;
+
+        for c in s.chars() {
+            if let Some(glyph) = font.glyph(c) {
+                if glyph.width > 0 && glyph.height > 0 {
+                    let glyph_data = font.glyph_data(glyph);
+                    let gx = cursor_x + glyph.bearing_x as i32;
+                    let gy = base_y + glyph.bearing_y as i32;
+
+                    for py in 0..glyph.height as i32 {
+                        for px in 0..glyph.width as i32 {
+                            let idx = (py * glyph.width as i32 + px) as usize;
+                            let alpha = glyph_data[idx];
+                            if alpha > 32 {
+                                let blended = color.with_alpha(alpha);
+                                self.pixel(gx + px, gy + py, blended);
+                            }
+                        }
+                    }
+                }
+                cursor_x += glyph.advance as i32;
+            } else {
+                cursor_x += (font.size / 2) as i32;
+            }
+        }
     }
 }
