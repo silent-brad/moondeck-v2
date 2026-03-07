@@ -1,84 +1,160 @@
 -- System Info Widget
 -- Displays device system information
 
+local theme = require("theme")
+local components = require("components")
+
 local M = {}
 
 function M.init(ctx)
-    return {
-        x = ctx.x,
-        y = ctx.y,
-        width = ctx.width,
-        height = ctx.height,
-        uptime_ms = 0,
-        frame_count = 0,
-    }
+	return {
+		x = ctx.x,
+		y = ctx.y,
+		width = ctx.width,
+		height = ctx.height,
+		uptime = 0,
+		free_heap = 0,
+		wifi_rssi = 0,
+		cpu_freq = 0,
+		last_update = 0,
+	}
 end
 
 function M.update(state, delta_ms)
-    state.uptime_ms = state.uptime_ms + delta_ms
-    state.frame_count = state.frame_count + 1
+	state.last_update = state.last_update + delta_ms
+
+	-- Update system info every second
+	if state.last_update >= 1000 then
+		state.uptime = device.uptime and device.uptime() or (device.seconds() % 86400)
+		state.free_heap = device.free_heap and device.free_heap() or 0
+		state.wifi_rssi = device.wifi_rssi and device.wifi_rssi() or -50
+		state.cpu_freq = device.cpu_freq and device.cpu_freq() or 160
+		state.last_update = 0
+	end
+end
+
+-- Format bytes to human readable
+local function format_bytes(bytes)
+	if bytes >= 1048576 then
+		return string.format("%.1f MB", bytes / 1048576)
+	elseif bytes >= 1024 then
+		return string.format("%.1f KB", bytes / 1024)
+	else
+		return tostring(bytes) .. " B"
+	end
+end
+
+-- Format uptime
+local function format_uptime(seconds)
+	local days = math.floor(seconds / 86400)
+	local hours = math.floor((seconds % 86400) / 3600)
+	local mins = math.floor((seconds % 3600) / 60)
+	local secs = seconds % 60
+
+	if days > 0 then
+		return string.format("%dd %02d:%02d:%02d", days, hours, mins, secs)
+	else
+		return string.format("%02d:%02d:%02d", hours, mins, secs)
+	end
+end
+
+-- Get WiFi signal strength description
+local function wifi_strength(rssi)
+	if rssi >= -50 then
+		return "Excellent", "ok"
+	elseif rssi >= -60 then
+		return "Good", "ok"
+	elseif rssi >= -70 then
+		return "Fair", "warning"
+	else
+		return "Weak", "error"
+	end
 end
 
 function M.render(state, gfx)
-    -- Draw background panel
-    gfx:fill_rounded_rect(0, 0, state.width, state.height, 16, "#1a1a2e")
-    
-    -- Title
-    gfx:text(20, 40, "System Information", "white", "large")
-    gfx:line(20, 55, state.width - 20, 55, "#e94560", 2)
-    
-    local y = 90
-    local line_height = 40
-    
-    -- Device info
-    gfx:text(30, y, "Device:", "#888888", "medium")
-    gfx:text(200, y, "ESP32-S3 Moondeck", "white", "medium")
-    y = y + line_height
-    
-    -- Display
-    gfx:text(30, y, "Display:", "#888888", "medium")
-    gfx:text(200, y, device.screen_width() .. "x" .. device.screen_height() .. " RGB565", "white", "medium")
-    y = y + line_height
-    
-    -- Uptime
-    local uptime_secs = math.floor(state.uptime_ms / 1000)
-    local hours = math.floor(uptime_secs / 3600)
-    local mins = math.floor((uptime_secs % 3600) / 60)
-    local secs = uptime_secs % 60
-    local uptime_str = string.format("%02d:%02d:%02d", hours, mins, secs)
-    
-    gfx:text(30, y, "Uptime:", "#888888", "medium")
-    gfx:text(200, y, uptime_str, "white", "medium")
-    y = y + line_height
-    
-    -- Frame count
-    gfx:text(30, y, "Frames:", "#888888", "medium")
-    gfx:text(200, y, utils.format_number(state.frame_count), "white", "medium")
-    y = y + line_height
-    
-    -- Memory (placeholder - actual ESP memory would need HAL)
-    gfx:text(30, y, "Free Heap:", "#888888", "medium")
-    gfx:text(200, y, "-- KB", "#888888", "medium")
-    y = y + line_height
-    
-    -- Version
-    gfx:text(30, y, "Version:", "#888888", "medium")
-    gfx:text(200, y, "v0.1.0", "#00d9ff", "medium")
-    
-    -- Progress bar decoration
-    local bar_y = state.height - 60
-    local bar_width = state.width - 60
-    local progress = (state.uptime_ms % 10000) / 10000
-    
-    gfx:fill_rounded_rect(30, bar_y, bar_width, 20, 10, "#0f3460")
-    gfx:fill_rounded_rect(30, bar_y, math.floor(bar_width * progress), 20, 10, "#e94560")
-    
-    -- Border
-    gfx:stroke_rounded_rect(5, 5, state.width - 10, state.height - 10, 12, "#e94560", 2)
+	local th = theme:get()
+	local px, py = 20, 15
+
+	-- Draw card
+	components.card(gfx, 0, 0, state.width, state.height, {
+		bg = th.bg_card,
+		border = th.border_primary,
+	})
+
+	-- Title bar
+	local title_h = components.title_bar(gfx, px, py, state.width - px * 2, "System", {
+		accent = th.accent_secondary,
+	})
+
+	local content_y = py + title_h + 15
+	local row_height = 35
+	local col_width = (state.width - px * 2) / 2
+
+	-- Uptime
+	gfx:text(px, content_y, "Uptime", th.text_muted, "small")
+	gfx:text(px, content_y + 14, format_uptime(state.uptime), th.text_primary, "medium")
+
+	-- CPU Frequency
+	gfx:text(px + col_width, content_y, "CPU", th.text_muted, "small")
+	gfx:text(px + col_width, content_y + 14, state.cpu_freq .. " MHz", th.text_primary, "medium")
+
+	content_y = content_y + row_height + 10
+
+	-- Free Memory
+	gfx:text(px, content_y, "Free Memory", th.text_muted, "small")
+	gfx:text(px, content_y + 14, format_bytes(state.free_heap), th.text_primary, "medium")
+
+	-- Memory bar
+	local mem_total = 400000 -- Approximate total heap
+	local mem_used_ratio = 1 - (state.free_heap / mem_total)
+	mem_used_ratio = math.max(0, math.min(1, mem_used_ratio))
+
+	components.progress_bar(gfx, px, content_y + 32, col_width - 20, 8, mem_used_ratio, {
+		bg = th.bg_tertiary,
+		fg = mem_used_ratio > 0.8 and th.accent_warning or th.accent_primary,
+	})
+
+	-- WiFi Signal
+	gfx:text(px + col_width, content_y, "WiFi Signal", th.text_muted, "small")
+	local strength_text, strength_status = wifi_strength(state.wifi_rssi)
+	gfx:text(
+		px + col_width,
+		content_y + 14,
+		strength_text .. " (" .. state.wifi_rssi .. " dBm)",
+		th.text_primary,
+		"medium"
+	)
+
+	-- WiFi bar
+	local wifi_ratio = math.max(0, math.min(1, (state.wifi_rssi + 100) / 50))
+	local wifi_color = strength_status == "ok" and th.accent_success
+		or strength_status == "warning" and th.accent_warning
+		or th.accent_error
+
+	components.progress_bar(gfx, px + col_width, content_y + 32, col_width - 20, 8, wifi_ratio, {
+		bg = th.bg_tertiary,
+		fg = wifi_color,
+	})
+
+	content_y = content_y + row_height + 25
+
+	-- Divider
+	components.divider(gfx, px, content_y, state.width - px * 2, { color = th.border_primary })
+
+	content_y = content_y + 15
+
+	-- Device info
+	gfx:text(px, content_y, "Device", th.text_muted, "small")
+	gfx:text(px, content_y + 14, "ESP32-S3 • 800x480 LCD", th.text_secondary, "small")
+
+	-- Status indicators
+	local status_y = content_y
+	components.status(gfx, px + col_width, status_y, "WiFi Connected", "ok")
+	components.status(gfx, px + col_width, status_y + 18, "Display Active", "ok")
 end
 
 function M.on_event(state, event)
-    return false
+	return false
 end
 
 return M

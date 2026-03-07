@@ -1,18 +1,27 @@
 -- Moondeck Initialization Script
--- This file is loaded before pages.lua
+-- Loads theme, layout system, and component library
 
 print("Moondeck v2 initializing...")
+
+-- Load core modules (these are made available globally)
+theme = require("theme")
+layout = require("layout")
+components = require("components")
+
+-- Set theme from environment
+local theme_name = env.get("THEME") or "dark"
+if theme:set(theme_name) then
+	print("Theme: " .. theme_name)
+else
+	print("Theme not found, using dark")
+	theme:set("dark")
+end
 
 -- Global configuration
 config = {
 	refresh_rate = 30,
-	theme = {
-		background = "#1a1a2e",
-		primary = "#0f3460",
-		accent = "#e94560",
-		text = "#ffffff",
-		text_dim = "#888888",
-	},
+	screen_width = 800,
+	screen_height = 480,
 }
 
 -- Utility functions available to all widgets
@@ -37,6 +46,10 @@ end
 
 function utils.clamp(value, min, max)
 	return math.max(min, math.min(max, value))
+end
+
+function utils.lerp(a, b, t)
+	return a + (b - a) * t
 end
 
 print("Initialization complete!")

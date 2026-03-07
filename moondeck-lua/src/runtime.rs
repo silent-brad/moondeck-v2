@@ -98,6 +98,7 @@ struct PageConfig {
     id: String,
     title: Option<String>,
     background: Option<String>,
+    layout: Option<String>,
     #[serde(default)]
     widgets: Vec<WidgetConfig>,
 }
@@ -105,6 +106,8 @@ struct PageConfig {
 #[derive(Debug, Clone, serde::Deserialize)]
 struct WidgetConfig {
     module: String,
+    #[serde(default)]
+    slot: usize,
     #[serde(default)]
     x: i32,
     #[serde(default)]
@@ -118,6 +121,73 @@ struct WidgetConfig {
 }
 
 fn default_dimension() -> u32 { 100 }
+
+// Layout system constants
+const SCREEN_WIDTH: i32 = 800;
+const SCREEN_HEIGHT: i32 = 480;
+const GRID_MARGIN: i32 = 20;
+const GRID_GUTTER: i32 = 16;
+const GRID_COLS: i32 = 12;
+
+// Layout slot definitions
+struct LayoutSlot {
+    col: i32,
+    span: i32,
+    row: i32,
+    row_span: i32,
+}
+
+fn get_layout_slots(layout_name: &str) -> Vec<LayoutSlot> {
+    match layout_name {
+        "full" => vec![
+            LayoutSlot { col: 1, span: 12, row: 1, row_span: 2 },
+        ],
+        "half_half" => vec![
+            LayoutSlot { col: 1, span: 6, row: 1, row_span: 2 },
+            LayoutSlot { col: 7, span: 6, row: 1, row_span: 2 },
+        ],
+        "thirds" => vec![
+            LayoutSlot { col: 1, span: 4, row: 1, row_span: 2 },
+            LayoutSlot { col: 5, span: 4, row: 1, row_span: 2 },
+            LayoutSlot { col: 9, span: 4, row: 1, row_span: 2 },
+        ],
+        "main_sidebar" => vec![
+            LayoutSlot { col: 1, span: 8, row: 1, row_span: 2 },
+            LayoutSlot { col: 9, span: 4, row: 1, row_span: 1 },
+            LayoutSlot { col: 9, span: 4, row: 2, row_span: 1 },
+        ],
+        "quad" => vec![
+            LayoutSlot { col: 1, span: 6, row: 1, row_span: 1 },
+            LayoutSlot { col: 7, span: 6, row: 1, row_span: 1 },
+            LayoutSlot { col: 1, span: 6, row: 2, row_span: 1 },
+            LayoutSlot { col: 7, span: 6, row: 2, row_span: 1 },
+        ],
+        "dashboard" => vec![
+            LayoutSlot { col: 1, span: 8, row: 1, row_span: 2 },
+            LayoutSlot { col: 9, span: 4, row: 1, row_span: 1 },
+            LayoutSlot { col: 9, span: 4, row: 2, row_span: 1 },
+        ],
+        _ => vec![
+            LayoutSlot { col: 1, span: 12, row: 1, row_span: 2 },
+        ],
+    }
+}
+
+fn calculate_slot_bounds(slot: &LayoutSlot, rows: i32) -> (i32, i32, u32, u32) {
+    let available_width = SCREEN_WIDTH - (GRID_MARGIN * 2) - (GRID_GUTTER * (GRID_COLS - 1));
+    let single_col = available_width / GRID_COLS;
+    
+    let x = GRID_MARGIN + ((slot.col - 1) * (single_col + GRID_GUTTER));
+    let w = (single_col * slot.span) + (GRID_GUTTER * (slot.span - 1));
+    
+    let available_height = SCREEN_HEIGHT - (GRID_MARGIN * 2) - (GRID_GUTTER * (rows - 1));
+    let row_height = available_height / rows;
+    
+    let y = GRID_MARGIN + ((slot.row - 1) * (row_height + GRID_GUTTER));
+    let h = (row_height * slot.row_span) + (GRID_GUTTER * (slot.row_span - 1));
+    
+    (x, y, w as u32, h as u32)
+}
 
 fn parse_pages_config(lua_source: &str) -> Result<Vec<Page>> {
     let mut lua = Lua::full();
@@ -162,9 +232,28 @@ fn parse_pages_config(lua_source: &str) -> Result<Vec<Page>> {
         if let Some(bg) = p.background {
             page = page.with_background(&bg);
         }
+        
+        // Get layout slots if layout is specified
+        let layout_slots = p.layout.as_deref().map(get_layout_slots);
+        
         for w in p.widgets {
-            let module_name = w.module.strip_prefix("widgets.").unwrap_or(&w.module);
-            let mut widget = WidgetInstance::new(module_name, w.x, w.y, w.w, w.h)
+            let module_name = &w.module;
+            
+            // Calculate position from layout slot or use explicit x/y/w/h
+            let (x, y, width, height) = if let Some(ref slots) = layout_slots {
+                if w.slot > 0 && w.slot <= slots.len() {
+                    calculate_slot_bounds(&slots[w.slot - 1], 2)
+                } else if w.slot == 0 && !slots.is_empty() {
+                    // Default to first slot if slot is 0
+                    calculate_slot_bounds(&slots[0], 2)
+                } else {
+                    (w.x, w.y, w.w, w.h)
+                }
+            } else {
+                (w.x, w.y, w.w, w.h)
+            };
+            
+            let mut widget = WidgetInstance::new(module_name, x, y, width, height)
                 .with_update_interval(w.update_interval.unwrap_or(1000));
             if let Some(opts) = w.opts {
                 widget.context.opts = opts.as_object()

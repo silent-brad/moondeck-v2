@@ -282,5 +282,4 @@ moondeck-v2/
 - [[https://docs.trmnl.com/][TRMNL Documentation]]
 - [[https://github.com/usetrmnl/firmware][TRMNL Firmware (GPL-3)]]
 - [[https://github.com/esp-rs/esp-idf-sys][esp-idf-sys - ESP-IDF bindings for Rust]]
-- [[https://github.com/mlua-rs/mlua][mlua - Lua bindings for Rust]]
 - [[https://docs.rs/embedded-graphics/latest/embedded_graphics/][embedded-graphics documentation]]

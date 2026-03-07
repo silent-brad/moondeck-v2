@@ -1,0 +1,215 @@
+#+TITLE: Moondeck Configuration
+#+DESCRIPTION: This directory contains all user-configurable files for your Moondeck device.
+
+* Quick Start
+
+1. Copy ~.env.example~ from the project root to ~config/.env~
+2. Fill in your API keys and WiFi credentials
+3. Edit ~pages.lua~ to customize your dashboard layout
+4. Flash to your device
+
+* Files
+
+| File             | Purpose                                   |
+|------------------+-------------------------------------------|
+| ~.env~           | API keys, WiFi credentials, and settings  |
+| ~pages.lua~      | Page layouts and widget configuration     |
+| ~theme.lua~      | Color themes and typography settings      |
+| ~layout.lua~     | Grid-based layout system                  |
+| ~components.lua~ | Reusable UI components                    |
+| ~init.lua~       | Initialization script (loads theme, etc.) |
+| ~widgets/~       | Widget implementations                    |
+
+* Environment Variables
+
+** Required
+
+#+begin_src env
+WIFI_SSID=your_wifi_ssid
+WIFI_PASSWORD=your_wifi_password
+#+begin_src 
+
+** Theme
+
+#+begin_src env
+THEME=dark              # Options: dark, light, mint
+TIMEZONE=America/New_York
+#+begin_src 
+
+** Weather (OpenWeatherMap)
+
+#+begin_src env
+WEATHER_API_KEY=your_key
+WEATHER_CITY=New York
+WEATHER_UNITS=imperial  # or metric
+#+begin_src 
+
+** Stocks (Stockdata.org)
+
+#+begin_src env
+STOCKS_API_KEY=your_key
+STOCKS_SYMBOLS=AAPL,GOOGL,MSFT,TSLA
+#+begin_src 
+
+** Crypto (CoinGecko - no key needed)
+
+#+begin_src env
+CRYPTO_COINS=bitcoin,ethereum,solana
+CRYPTO_CURRENCY=usd
+#+end_src
+
+** RSS (Miniflux)
+
+#+begin_src env
+MINIFLUX_URL=https://your-miniflux-instance.com/v1
+MINIFLUX_API_KEY=your_key
+MINIFLUX_LIMIT=10
+#+end_src
+
+* Layout System
+
+Pages can use predefined layouts. Set ~layout~ on a page and use ~slot~ on widgets:
+
+** Available Layouts
+
+| Layout         | Description                    | Slots |
+|----------------+--------------------------------+-------|
+| ~full~         | Single full-screen widget      | 1     |
+| ~half_half~    | Two equal columns              | 2     |
+| ~thirds~       | Three equal columns            | 3     |
+| ~main_sidebar~ | Large left + two stacked right | 3     |
+| ~quad~         | 2x2 grid                       | 4     |
+| ~dashboard~    | Main area + sidebar widgets    | 3     |
+
+* Example
+
+#+begin_src lua
+{
+    id = "dashboard",
+    layout = "main_sidebar",
+    widgets = {
+        { module = "widgets.clock", slot = 1 },    -- Main area
+        { module = "widgets.weather", slot = 2 },  -- Top right
+        { module = "widgets.crypto", slot = 3 },   -- Bottom right
+    },
+}
+#+end_src
+
+* Themes
+
+Three built-in themes are available:
+
+- /dark/ - Dark backgrounds with cyan accents (default)
+- /light/ - Light backgrounds with blue accents  
+- /mint/ - Dark green theme with mint accents
+
+Set via ~THEME~ environment variable or programmatically:
+
+#+begin_src lua
+theme:set("mint")
+#+end_src
+
+* Creating Custom Widgets
+
+Widgets are Lua modules in ~widgets/~. A widget must export:
+
+#+begin_src lua
+local M = {}
+
+function M.init(ctx)
+    -- Return initial state
+    return {
+        x = ctx.x,
+        y = ctx.y,
+        width = ctx.width,
+        height = ctx.height,
+        -- your custom state...
+    }
+end
+
+function M.update(state, delta_ms)
+    -- Update logic (called every frame)
+end
+
+function M.render(state, gfx)
+    -- Drawing code
+end
+
+function M.on_event(state, event)
+    -- Handle touch events
+    return false  -- return true if handled
+end
+
+return M
+#+end_src
+
+** Using Components
+
+#+begin_src lua
+local theme = require("theme")
+local components = require("components")
+
+function M.render(state, gfx)
+    local th = theme:get()
+    
+    -- Draw a card
+    components.card(gfx, 0, 0, state.width, state.height, {
+        bg = th.bg_card,
+        border = th.border_primary,
+    })
+    
+    -- Draw a title bar
+    components.title_bar(gfx, 20, 15, state.width - 40, "My Widget")
+    
+    -- Draw a value display
+    components.value_display(gfx, 20, 60, "42", "Answer")
+    
+    -- Draw status indicator
+    components.status(gfx, 20, 120, "Online", "ok")
+end
+#+end_src
+
+** Available Components
+
+- ~components.card(gfx, x, y, w, h, opts)~ - Rounded rectangle card
+- ~components.title_bar(gfx, x, y, w, title, opts)~ - Title with accent line
+- ~components.value_display(gfx, x, y, value, label, opts)~ - Large value + label
+- ~components.item_row(gfx, x, y, w, label, value, opts)~ - Label + value row
+- ~components.divider(gfx, x, y, w, opts)~ - Horizontal line
+- ~components.progress_bar(gfx, x, y, w, h, progress, opts)~ - Progress bar
+- ~components.status(gfx, x, y, text, status)~ - Status indicator (ok/warning/error)
+- ~components.sparkline(gfx, x, y, w, h, data, opts)~ - Mini chart
+- ~components.loading(gfx, x, y, text)~ - Loading indicator
+- ~components.error(gfx, x, y, w, message)~ - Error display
+
+** Making API Calls
+
+#+begin_src lua
+function M.fetch_data(state)
+    local api_key = env.get("MY_API_KEY")
+    local url = "https://api.example.com/data?key=" .. api_key
+    
+    local response = net.http_get(url, nil, 10000)
+    
+    if response.ok then
+        local data = net.json_decode(response.body)
+        -- Use data...
+    else
+        state.error = response.error
+    end
+end
+#+end_src
+
+## Available Widgets
+
+| Widget    | Description                 | Required Env                       |
+|-----------+-----------------------------+------------------------------------|
+| ~clock~   | Time and date display       | -                                  |
+| ~weather~ | Weather from OpenWeatherMap | ~WEATHER_API_KEY~                  |
+| ~crypto~  | Cryptocurrency prices       | -                                  |
+| ~stocks~  | Stock prices                | ~STOCKS_API_KEY~                   |
+| ~bible~   | Bible verse of the day      | -                                  |
+| ~rss~     | RSS feed from Miniflux      | ~MINIFLUX_URL~, ~MINIFLUX_API_KEY~ |
+| ~quote~   | Inspirational quotes        | -                                  |
+| ~sysinfo~ | System information          | -                                  |
+| ~status~  | WiFi and device status      | -                                  |

@@ -1,124 +1,153 @@
 -- Weather Widget
 -- Fetches and displays weather data from OpenWeatherMap API
 
+local theme = require("theme")
+local components = require("components")
+
 local M = {}
 
 function M.init(ctx)
-    return {
-        x = ctx.x,
-        y = ctx.y,
-        width = ctx.width,
-        height = ctx.height,
-        city = ctx.opts.city or "New York",
-        units = ctx.opts.units or "metric",
-        temperature = nil,
-        description = "Loading...",
-        humidity = nil,
-        wind_speed = nil,
-        last_fetch = 0,
-        fetch_interval = 300000, -- 5 minutes
-        error = nil,
-    }
+	return {
+		x = ctx.x,
+		y = ctx.y,
+		width = ctx.width,
+		height = ctx.height,
+		city = ctx.opts.city or env.get("WEATHER_CITY") or "New York",
+		units = ctx.opts.units or env.get("WEATHER_UNITS") or "imperial",
+		temperature = nil,
+		feels_like = nil,
+		description = nil,
+		humidity = nil,
+		wind_speed = nil,
+		icon = nil,
+		last_fetch = 0,
+		fetch_interval = ctx.opts.update_interval or 300000,
+		loading = true,
+		error = nil,
+	}
 end
 
 function M.update(state, delta_ms)
-    state.last_fetch = state.last_fetch + delta_ms
-    
-    -- Fetch weather data periodically
-    if state.last_fetch >= state.fetch_interval or state.temperature == nil then
-        M.fetch_weather(state)
-        state.last_fetch = 0
-    end
+	state.last_fetch = state.last_fetch + delta_ms
+
+	if state.last_fetch >= state.fetch_interval or state.temperature == nil then
+		M.fetch_weather(state)
+		state.last_fetch = 0
+	end
 end
 
 function M.fetch_weather(state)
-    local api_key = env.get("WEATHER_API_KEY")
-    if not api_key then
-        state.error = "No API key configured"
-        state.description = "Set WEATHER_API_KEY in .env"
-        return
-    end
-    
-    local url = string.format(
-        "https://api.openweathermap.org/data/2.5/weather?q=%s&units=%s&appid=%s",
-        state.city,
-        state.units,
-        api_key
-    )
-    
-    local response = net.http_get(url, nil, 5000)
-    
-    if response.ok then
-        local data = net.json_decode(response.body)
-        if data then
-            state.temperature = data.main and data.main.temp
-            state.humidity = data.main and data.main.humidity
-            state.description = data.weather and data.weather[1] and data.weather[1].description or "Unknown"
-            state.wind_speed = data.wind and data.wind.speed
-            state.error = nil
-        else
-            state.error = "Failed to parse response"
-        end
-    else
-        state.error = response.error or "Request failed"
-    end
+	local api_key = env.get("WEATHER_API_KEY")
+	if not api_key then
+		state.error = "Set WEATHER_API_KEY"
+		state.loading = false
+		return
+	end
+
+	local url = string.format(
+		"https://api.openweathermap.org/data/2.5/weather?q=%s&units=%s&appid=%s",
+		state.city,
+		state.units,
+		api_key
+	)
+
+	local response = net.http_get(url, nil, 10000)
+
+	if response.ok then
+		local data = net.json_decode(response.body)
+		if data and data.main then
+			state.temperature = math.floor(data.main.temp + 0.5)
+			state.feels_like = math.floor(data.main.feels_like + 0.5)
+			state.humidity = data.main.humidity
+			state.description = data.weather and data.weather[1] and data.weather[1].main or "Unknown"
+			state.icon = data.weather and data.weather[1] and data.weather[1].icon or nil
+			state.wind_speed = data.wind and math.floor(data.wind.speed + 0.5)
+			state.error = nil
+		else
+			state.error = "Invalid response"
+		end
+	else
+		state.error = response.error or "Request failed"
+	end
+
+	state.loading = false
 end
 
 function M.render(state, gfx)
-    -- Draw background panel
-    gfx:fill_rounded_rect(0, 0, state.width, state.height, 16, "#1e3a5f")
-    
-    -- Title
-    gfx:text(20, 40, "Weather - " .. state.city, "white", "large")
-    gfx:line(20, 55, state.width - 20, 55, "#e94560", 2)
-    
-    if state.error then
-        -- Show error
-        gfx:text(20, 150, "Error:", "#ff6b6b", "medium")
-        gfx:text(20, 180, state.error, "#888888", "small")
-    else
-        -- Temperature (large display)
-        if state.temperature then
-            local temp_str = string.format("%.1f°", state.temperature)
-            local unit = state.units == "metric" and "C" or "F"
-            gfx:text(40, 150, temp_str, "white", "xlarge")
-            gfx:text(180, 150, unit, "#888888", "large")
-        end
-        
-        -- Description
-        gfx:text(40, 220, state.description:gsub("^%l", string.upper), "#00d9ff", "large")
-        
-        -- Additional info
-        local y_offset = 280
-        
-        if state.humidity then
-            gfx:text(40, y_offset, "Humidity: " .. state.humidity .. "%", "#888888", "medium")
-            y_offset = y_offset + 35
-        end
-        
-        if state.wind_speed then
-            local wind_unit = state.units == "metric" and "m/s" or "mph"
-            gfx:text(40, y_offset, "Wind: " .. state.wind_speed .. " " .. wind_unit, "#888888", "medium")
-        end
-    end
-    
-    -- Decorative border
-    gfx:stroke_rounded_rect(5, 5, state.width - 10, state.height - 10, 12, "#e94560", 2)
-    
-    -- Weather icon placeholder (sun/cloud)
-    local icon_x = state.width - 120
-    local icon_y = 120
-    gfx:fill_circle(icon_x, icon_y, 40, "#ffcc00")
-    gfx:stroke_circle(icon_x, icon_y, 40, "#ff9500", 2)
+	local th = theme:get()
+	local px, py = 20, 15
+
+	-- Draw card
+	components.card(gfx, 0, 0, state.width, state.height, {
+		bg = th.bg_card,
+		border = th.border_primary,
+	})
+
+	-- Title bar
+	local title_h = components.title_bar(gfx, px, py, state.width - px * 2, "Weather", {
+		accent = th.accent_primary,
+	})
+
+	local content_y = py + title_h + 10
+
+	if state.loading then
+		components.loading(gfx, px, content_y + 30)
+		return
+	end
+
+	if state.error then
+		components.error(gfx, px, content_y + 10, state.width - px * 2, state.error)
+		return
+	end
+
+	-- Temperature display (large)
+	local temp_str = tostring(state.temperature) .. "°"
+	local unit = state.units == "metric" and "C" or "F"
+
+	gfx:text(px, content_y + 15, temp_str, th.text_primary, "xlarge")
+	gfx:text(px + #temp_str * 14 + 5, content_y + 20, unit, th.text_muted, "large")
+
+	-- Description
+	if state.description then
+		gfx:text(px, content_y + 55, state.description, th.text_accent, "large")
+	end
+
+	-- City
+	gfx:text(px, content_y + 80, state.city, th.text_muted, "small")
+
+	-- Additional info (right side or below based on width)
+	local info_x = state.width > 300 and (state.width / 2 + 20) or px
+	local info_y = state.width > 300 and (content_y + 15) or (content_y + 100)
+
+	if state.feels_like then
+		components.item_row(gfx, info_x, info_y, 140, "Feels like", state.feels_like .. "°", {
+			label_color = th.text_muted,
+		})
+		info_y = info_y + 22
+	end
+
+	if state.humidity then
+		components.item_row(gfx, info_x, info_y, 140, "Humidity", state.humidity .. "%", {
+			label_color = th.text_muted,
+		})
+		info_y = info_y + 22
+	end
+
+	if state.wind_speed then
+		local wind_unit = state.units == "metric" and "m/s" or "mph"
+		components.item_row(gfx, info_x, info_y, 140, "Wind", state.wind_speed .. " " .. wind_unit, {
+			label_color = th.text_muted,
+		})
+	end
 end
 
 function M.on_event(state, event)
-    if event.type == "tap" then
-        -- Force refresh on tap
-        state.last_fetch = state.fetch_interval
-        return true
-    end
-    return false
+	if event.type == "tap" then
+		state.last_fetch = state.fetch_interval
+		state.loading = true
+		return true
+	end
+	return false
 end
 
 return M
