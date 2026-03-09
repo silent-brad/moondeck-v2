@@ -3,31 +3,14 @@
 .embuild
 Cargo.lock
 
+# Generated sdkconfig for partition table (absolute path, machine-specific)
+moondeck-app/sdkconfig.partitions
+
 # ESP toolchain
 /.esp/
-sdkconfig
-sdkconfig.old
-
-sdkconfig.defaults
 
 # Environment
 .env
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Build artifacts
-*.elf
-*.bin
-*.map
 
 # Nix
 result

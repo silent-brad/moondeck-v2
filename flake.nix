@@ -132,6 +132,11 @@
             if [ -f \"\$HOME/.espup/export-esp.sh\" ]; then
               source \"\$HOME/.espup/export-esp.sh\"
             fi
+            # Generate partition table path config (must be absolute for esp-idf-sys)
+            WORKSPACE_DIR=\"\$(cd \"\$(dirname \"\$0\")/..\" 2>/dev/null || pwd)\"
+            if [ -f \"\$PWD/partitions.csv\" ]; then
+              echo \"CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\\\"\$PWD/partitions.csv\\\"\" > moondeck-app/sdkconfig.partitions
+            fi
             cargo build --release -p moondeck-app
           "
         '';

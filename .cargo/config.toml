@@ -7,7 +7,8 @@ runner = "espflash flash --flash-size 4mb --monitor"
 
 [env]
 ESP_IDF_VERSION = "v5.2"
-ESP_IDF_SDKCONFIG_DEFAULTS = { value = "sdkconfig.defaults", relative = true }
+ESP_IDF_SDKCONFIG_DEFAULTS = { value = "sdkconfig.defaults;moondeck-app/sdkconfig.partitions", relative = true }
+ESP_IDF_SYS_ROOT_CRATE = "moondeck-app"
 
 [unstable]
 build-std = ["std", "panic_abort"]
