@@ -1,6 +1,5 @@
 # Rust
 /target/
-.cargo
 .embuild
 Cargo.lock
 
