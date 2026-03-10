@@ -117,6 +117,7 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
         let _ = line.into_styled(style).draw(self.target);
     }
 
+    // TODO: Remove this as I don't plan on using triangles
     pub fn triangle(
         &mut self,
         x1: i32,

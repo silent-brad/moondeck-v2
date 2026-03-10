@@ -59,7 +59,6 @@ CONFIG_LOG_DEFAULT_LEVEL=3
 CONFIG_LOG_MAXIMUM_LEVEL_INFO=y
 
 # Partition table - custom partition table
-# Path is generated dynamically by moondeck-app/build.rs
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
 # Watchdog

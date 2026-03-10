@@ -1,0 +1,15 @@
+#+TITLE: TODO List for MoonDeck
+
+* TODO Make widgets work correctly/be simple to configure
+  Revise update function in `moondeck-lua/src/plugins.rs`
+
+
+* TODO Revise/simplify moondeck-lua/config structure
+
+* TODO Reduce LOC/dependencies
+  Use macros?
+
+* TODO Update docs
+
+* TODO Revise flake to be cleaner
+

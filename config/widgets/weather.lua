@@ -6,58 +6,14 @@ local components = require("components")
 
 local M = {}
 
--- Safe floor function (avoids upvalue issues with piccolo)
-local function floor(n)
-	if math and math.floor then
-		return math.floor(n)
-	end
-	local i = n - (n % 1)
-	if n < 0 and i ~= n then
-		return i - 1
-	end
-	return i
-end
-
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_secondary = "#a0a0b0",
-		text_muted = "#606070",
-		text_accent = "#00d4ff",
-		accent_primary = "#00d4ff",
-		accent_secondary = "#e94560",
-		accent_success = "#00ff88",
-		accent_warning = "#ffaa00",
-		accent_error = "#ff4466",
-		bg_tertiary = "#1a1a2e",
-		border_primary = "#2a2a3e",
-	}
-end
-
--- Safe env getter
-local function env_get(key)
-	if env and type(env.get) == "function" then
-		return env.get(key)
-	end
-	return nil
-end
-
 function M.init(ctx)
 	return {
 		x = ctx.x,
 		y = ctx.y,
 		width = ctx.width,
 		height = ctx.height,
-		city = ctx.opts.city or env_get("WEATHER_CITY") or "New York",
-		units = ctx.opts.units or env_get("WEATHER_UNITS") or "imperial",
+		city = ctx.opts.city or env.get("WEATHER_CITY") or "New York",
+		units = ctx.opts.units or env.get("WEATHER_UNITS") or "imperial",
 		temperature = nil,
 		feels_like = nil,
 		description = nil,
@@ -77,7 +33,7 @@ function M.update(state, delta_ms)
 end
 
 function M.render(state, gfx)
-	local th = get_theme()
+	local th = theme:get()
 	local px, py = 20, 15
 
 	-- Draw card

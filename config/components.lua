@@ -107,7 +107,7 @@ function Components.title_bar(gfx, x, y, w, title, opts)
 
 	-- Draw accent line
 	if show_line and gfx.line then
-		local line_y = y + 42
+		local line_y = y + 48
 		gfx:line(x, line_y, x + w, line_y, accent, 2)
 	end
 

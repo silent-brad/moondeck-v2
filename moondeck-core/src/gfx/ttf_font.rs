@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+// TODO: Turn into a macro!
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum FontFamily {

@@ -6,59 +6,6 @@ local components = require("components")
 
 local M = {}
 
--- Safe floor function (avoids upvalue issues with math.floor)
-local function floor(n)
-	if math and math.floor then
-		return math.floor(n)
-	end
-	-- Fallback: truncate towards zero
-	local i = n - (n % 1)
-	if n < 0 and i ~= n then
-		return i - 1
-	end
-	return i
-end
-
--- Safe max function
-local function max(a, b)
-	if math and math.max then
-		return math.max(a, b)
-	end
-	return a > b and a or b
-end
-
--- Safe min function
-local function min(a, b)
-	if math and math.min then
-		return math.min(a, b)
-	end
-	return a < b and a or b
-end
-
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_secondary = "#a0a0b0",
-		text_muted = "#606070",
-		text_accent = "#00d4ff",
-		accent_primary = "#00d4ff",
-		accent_secondary = "#e94560",
-		accent_success = "#00ff88",
-		accent_warning = "#ffaa00",
-		accent_error = "#ff4466",
-		bg_tertiary = "#1a1a2e",
-		border_primary = "#2a2a3e",
-	}
-end
-
 function M.init(ctx)
 	return {
 		x = ctx.x,
@@ -97,10 +44,10 @@ end
 -- Format bytes to human readable (no string.format dependency)
 local function format_bytes(bytes)
 	if bytes >= 1048576 then
-		local mb = floor(bytes / 104857.6) / 10
+		local mb = math.floor(bytes / 104857.6) / 10
 		return mb .. " MB"
 	elseif bytes >= 1024 then
-		local kb = floor(bytes / 102.4) / 10
+		local kb = math.floor(bytes / 102.4) / 10
 		return kb .. " KB"
 	else
 		return tostring(bytes) .. " B"
@@ -109,10 +56,10 @@ end
 
 -- Format uptime (no string.format dependency)
 local function format_uptime(seconds)
-	local days = floor(seconds / 86400)
-	local hours = floor((seconds % 86400) / 3600)
-	local mins = floor((seconds % 3600) / 60)
-	local secs = floor(seconds % 60)
+	local days = math.floor(seconds / 86400)
+	local hours = math.floor((seconds % 86400) / 3600)
+	local mins = math.floor((seconds % 3600) / 60)
+	local secs = math.floor(seconds % 60)
 
 	if days > 0 then
 		return days .. "d " .. pad2(hours) .. ":" .. pad2(mins) .. ":" .. pad2(secs)
@@ -135,7 +82,7 @@ local function wifi_strength(rssi)
 end
 
 function M.render(state, gfx)
-	local th = get_theme()
+	local th = theme:get()
 	local px, py = 20, 15
 
 	-- Draw card
@@ -167,7 +114,7 @@ function M.render(state, gfx)
 	-- Memory bar
 	local mem_total = 400000 -- Approximate total heap
 	local mem_used_ratio = 1 - (state.free_heap / mem_total)
-	mem_used_ratio = max(0, min(1, mem_used_ratio))
+	mem_used_ratio = math.max(0, math.min(1, mem_used_ratio))
 
 	components.progress_bar(gfx, px, content_y + 32, col_width - 20, 8, mem_used_ratio, {
 		bg = th.bg_tertiary,
@@ -186,7 +133,7 @@ function M.render(state, gfx)
 	)
 
 	-- WiFi bar
-	local wifi_ratio = max(0, min(1, (state.wifi_rssi + 100) / 50))
+	local wifi_ratio = math.max(0, math.min(1, (state.wifi_rssi + 100) / 50))
 	local wifi_color = strength_status == "ok" and th.accent_success
 		or strength_status == "warning" and th.accent_warning
 		or th.accent_error
