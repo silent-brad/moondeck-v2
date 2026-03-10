@@ -167,7 +167,7 @@ impl WidgetPlugin {
             let module = lctx.fetch(module_table);
 
             let update_fn = module.get(lctx, "update");
-            if let Value::Function(_f) = update_fn {
+            if let Value::Function(f) = update_fn {
                 let state_val: Value = if let Some(ref state_stash) = widget_state {
                     lctx.fetch(state_stash).into()
                 } else {
@@ -175,102 +175,7 @@ impl WidgetPlugin {
                     Table::new(&lctx).into()
                 };
 
-                // Store module and state in globals temporarily for the wrapper to access
-                // The wrapper script is compiled fresh in this context, so it has correct _ENV
-                // We pass the module table instead of the function, so the wrapper can call
-                // module.update(state, delta) with proper _ENV access
-                lctx.set_global("__widget_module", module)?;
-                lctx.set_global("__widget_state", state_val)?;
-                lctx.set_global("__widget_delta", delta_ms as i64)?;
-
-                // Use a wrapper script that handles the update logic directly
-                // This wrapper has fresh _ENV from the current context, avoiding the stale
-                // upvalue problem that occurs when calling functions from the stashed module.
-                //
-                // The wrapper handles common state update patterns found in widgets:
-                // - Timing counters: last_fetch, last_update, last_change, last_check
-                // - Sysinfo widget: device info updates when last_update threshold reached
-                // - Weather widget: HTTP fetch from OpenWeatherMap API
-                let wrapper_code = br#"
-                    local state = __widget_state
-                    local delta = __widget_delta
-                    if not state then return end
-                    
-                    -- Handle common timing fields
-                    if state.last_fetch then state.last_fetch = state.last_fetch + delta end
-                    if state.last_update then state.last_update = state.last_update + delta end
-                    if state.last_change then state.last_change = state.last_change + delta end
-                    if state.last_check then state.last_check = state.last_check + delta end
-                    
-                    -- Sysinfo widget: update device stats every second
-                    if state.free_heap ~= nil and state.last_update and state.last_update >= 1000 then
-                        if device then
-                            state.uptime = device.uptime and device.uptime() or (device.seconds and device.seconds() % 86400 or 0)
-                            state.free_heap = device.free_heap and device.free_heap() or 0
-                            state.wifi_rssi = device.wifi_rssi and device.wifi_rssi() or -50
-                            state.cpu_freq = device.cpu_freq and device.cpu_freq() or 160
-                        end
-                        state.last_update = 0
-                    end
-                    
-                    -- Weather widget: fetch from OpenWeatherMap when interval reached
-                    if state.loading ~= nil and state.fetch_interval and state.last_fetch >= state.fetch_interval then
-                        local api_key = env and env.get and env.get("WEATHER_API_KEY")
-                        if api_key and net and net.http_get then
-                            -- URL-encode city name (replace spaces with %20)
-                            local raw_city = state.city or "New York"
-                            local city = ""
-                            for i = 1, #raw_city do
-                                local c = string.sub(raw_city, i, i)
-                                if c == " " then
-                                    city = city .. "%20"
-                                else
-                                    city = city .. c
-                                end
-                            end
-                            local units = state.units or "imperial"
-                            local url = "https://api.openweathermap.org/data/2.5/weather?q=" .. city .. "&units=" .. units .. "&appid=" .. api_key
-                            
-                            local response = net.http_get(url, {}, 10000)
-                            if response and response.ok and response.body then
-                                local data = net.json_decode(response.body)
-                                if data and data.main then
-                                    state.temperature = data.main.temp
-                                    state.feels_like = data.main.feels_like
-                                    state.humidity = data.main.humidity
-                                    if data.weather and data.weather[1] then
-                                        state.description = data.weather[1].description
-                                        state.icon = data.weather[1].icon
-                                    end
-                                    if data.wind then
-                                        state.wind_speed = data.wind.speed
-                                    end
-                                    state.loading = false
-                                    state.error = nil
-                                else
-                                    state.error = "Invalid API response"
-                                    state.loading = false
-                                end
-                            else
-                                state.error = response and response.error or "Network error"
-                                state.loading = false
-                            end
-                        elseif not api_key then
-                            state.error = "No API key"
-                            state.loading = false
-                        end
-                        state.last_fetch = 0
-                    end
-                "#;
-                let wrapper = match Closure::load(lctx, Some("update_wrapper"), &wrapper_code[..]) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!("Widget {} failed to compile wrapper: {:?}", module_name, e);
-                        return Ok(());
-                    }
-                };
-
-                let exec = Executor::start(lctx, wrapper.into(), ());
+                let exec = Executor::start(lctx, f, (state_val, delta_ms as i64));
                 let stashed = lctx.stash(exec);
                 let mut fuel = Fuel::with(100000);
                 let exec = lctx.fetch(&stashed);
@@ -280,16 +185,10 @@ impl WidgetPlugin {
                         break;
                     }
                 }
-                
-                // Check for execution errors
+
                 if let Ok(Err(e)) = exec.take_result::<Value>(lctx) {
                     log::error!("Widget {} update error: {:?}", module_name, e);
                 }
-
-                // Clean up globals
-                lctx.set_global("__widget_module", Value::Nil)?;
-                lctx.set_global("__widget_state", Value::Nil)?;
-                lctx.set_global("__widget_delta", Value::Nil)?;
             }
             Ok(())
         })?)
@@ -346,7 +245,7 @@ impl WidgetPlugin {
                         break;
                     }
                 }
-                
+
                 // Check for execution errors
                 if let Ok(Err(e)) = exec.take_result::<Value>(lctx) {
                     log::error!("Widget {} render error: {:?}", self.module, e);

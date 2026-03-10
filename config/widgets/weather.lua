@@ -30,6 +30,58 @@ end
 function M.update(state, delta_ms)
 	-- Only track time - complex operations not supported due to piccolo closure limitations
 	state.last_fetch = state.last_fetch + delta_ms
+	if state.loading ~= nil and state.fetch_interval and state.last_fetch >= state.fetch_interval then
+		local api_key = env and env.get and env.get("WEATHER_API_KEY")
+		if api_key and net and net.http_get then
+			-- URL-encode city name (replace spaces with %20)
+			local raw_city = state.city or "New York"
+			local city = ""
+			for i = 1, #raw_city do
+				local c = string.sub(raw_city, i, i)
+				if c == " " then
+					city = city .. "%20"
+				else
+					city = city .. c
+				end
+			end
+			local units = state.units or "imperial"
+			local url = "https://api.openweathermap.org/data/2.5/weather?q="
+				.. city
+				.. "&units="
+				.. units
+				.. "&appid="
+				.. api_key
+
+			local response = net.http_get(url, {}, 10000)
+			if response and response.ok and response.body then
+				local data = net.json_decode(response.body)
+				if data and data.main then
+					state.temperature = data.main.temp
+					state.feels_like = data.main.feels_like
+					state.humidity = data.main.humidity
+					if data.weather and data.weather[1] then
+						state.description = data.weather[1].description
+						state.icon = data.weather[1].icon
+					end
+					if data.wind then
+						state.wind_speed = data.wind.speed
+					end
+					state.loading = false
+					state.error = nil
+				else
+					state.error = "Invalid API response"
+					state.loading = false
+				end
+			else
+				state.error = response and response.error or "Network error"
+				state.loading = false
+			end
+		elseif not api_key then
+			state.error = "No API key"
+			state.loading = false
+		end
+		state.last_fetch = 0
+	end
 end
 
 function M.render(state, gfx)

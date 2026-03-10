@@ -4,7 +4,7 @@
 
 * DONE In ~moondeck-core/build.rs~ and ~moondeck-core/src/ttf-font.rs~, reduce LOC/make cleaner
 
-* TODO Make widgets work correctly/be simple to configure
+* DONE Make widgets work correctly/be simple to configure
   Revise update function in `moondeck-lua/src/plugins.rs`
 
 
