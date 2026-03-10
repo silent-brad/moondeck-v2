@@ -2,7 +2,7 @@
 
 * DONE In ~moondeck-core/src/color.rs~ (and other places which reference it), remove color consts and simply specify rgb values
 
-* TODO In ~moondeck-core/build.rs~ and ~moondeck-core/src/ttf-font.rs~, use macros to reduce LOC/make cleaner
+* DONE In ~moondeck-core/build.rs~ and ~moondeck-core/src/ttf-font.rs~, reduce LOC/make cleaner
 
 * TODO Make widgets work correctly/be simple to configure
   Revise update function in `moondeck-lua/src/plugins.rs`

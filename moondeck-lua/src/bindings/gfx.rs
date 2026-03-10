@@ -97,21 +97,6 @@ impl LuaDrawCommands {
     }
 }
 
-/*fn parse_color(s: &str) -> Color {
-    match s.to_lowercase().as_str() {
-        "black" => Color::BLACK,
-        "white" => Color::WHITE,
-        "red" => Color::RED,
-        "green" => Color::GREEN,
-        "blue" => Color::BLUE,
-        "cyan" => Color::CYAN,
-        "magenta" => Color::MAGENTA,
-        "yellow" => Color::YELLOW,
-        "gray" | "grey" => Color::GRAY,
-        _ => Color::from_hex(s).unwrap_or(Color::WHITE),
-    }
-}*/
-
 fn parse_font(size_name: &str) -> Font {
     match size_name.to_lowercase().as_str() {
         "small" => Font::Small,

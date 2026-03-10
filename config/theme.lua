@@ -102,7 +102,7 @@ themes.mint = {
 -- Typography configuration
 local typography = {
 	-- Font families (referenced by name, resolved by renderer)
-	font_display = "garamond", -- EB Garamond for headings
+	font_display = "eb garamond", -- EB Garamond for headings
 	font_body = "inter", -- Inter for body text
 	font_mono = "mono", -- Monospace for data
 

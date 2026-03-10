@@ -243,7 +243,7 @@ fn draw_loading_screen(
             (DISPLAY_HEIGHT as i32 / 2) - 60,
             "Moondeck",
             accent_color,
-            TtfFont::garamond(60),
+            TtfFont::ebgaramond(60),
         );
 
         // Main message

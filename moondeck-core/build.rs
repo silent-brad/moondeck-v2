@@ -1,80 +1,160 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
-
-// TODO:Use macros for this
 
 const SIZES: [u32; 4] = [14, 18, 24, 32];
 const CHAR_START: u8 = 32;
 const CHAR_END: u8 = 126;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct FontVariant {
-    name: &'static str,
-    path: &'static str,
-    weight: &'static str,
-    style: &'static str,
+    family: String,
+    weight: String,
+    style: String,
+    path: String,
 }
 
-const INTER_VARIANTS: &[FontVariant] = &[
-    FontVariant { name: "INTER_REGULAR", path: "src/assets/fonts/Inter/Inter-Regular.ttf", weight: "Regular", style: "Normal" },
-    FontVariant { name: "INTER_BOLD", path: "src/assets/fonts/Inter/Inter-Bold.ttf", weight: "Bold", style: "Normal" },
-    FontVariant { name: "INTER_ITALIC", path: "src/assets/fonts/Inter/Inter-Italic.ttf", weight: "Regular", style: "Italic" },
-    FontVariant { name: "INTER_BOLD_ITALIC", path: "src/assets/fonts/Inter/Inter-BoldItalic.ttf", weight: "Bold", style: "Italic" },
-];
+fn discover_fonts(fonts_dir: &Path) -> Vec<FontVariant> {
+    let mut variants = Vec::new();
 
-const GARAMOND_VARIANTS: &[FontVariant] = &[
-    FontVariant { name: "GARAMOND_REGULAR", path: "src/assets/fonts/EBGaramond/EBGaramond-Regular.ttf", weight: "Regular", style: "Normal" },
-    FontVariant { name: "GARAMOND_BOLD", path: "src/assets/fonts/EBGaramond/EBGaramond-Bold.ttf", weight: "Bold", style: "Normal" },
-    FontVariant { name: "GARAMOND_ITALIC", path: "src/assets/fonts/EBGaramond/EBGaramond-Italic.ttf", weight: "Regular", style: "Italic" },
-    FontVariant { name: "GARAMOND_BOLD_ITALIC", path: "src/assets/fonts/EBGaramond/EBGaramond-BoldItalic.ttf", weight: "Bold", style: "Italic" },
-];
+    let Ok(families) = fs::read_dir(fonts_dir) else {
+        return variants;
+    };
 
-fn main() {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let out_dir = std::env::var("OUT_DIR").unwrap();
+    for family_entry in families.flatten() {
+        let family_path = family_entry.path();
+        if !family_path.is_dir() {
+            continue;
+        }
 
+        let family_name = family_entry.file_name().to_string_lossy().to_string();
+
+        let Ok(files) = fs::read_dir(&family_path) else {
+            continue;
+        };
+
+        for file_entry in files.flatten() {
+            let file_path = file_entry.path();
+            let Some(ext) = file_path.extension() else {
+                continue;
+            };
+            if ext != "ttf" && ext != "otf" {
+                continue;
+            }
+
+            let file_name = file_entry.file_name().to_string_lossy().to_string();
+            let stem = file_path.file_stem().unwrap().to_string_lossy();
+
+            let (weight, style) = parse_font_style(&stem);
+
+            let relative_path = format!(
+                "src/assets/fonts/{}/{}",
+                family_name, file_name
+            );
+
+            variants.push(FontVariant {
+                family: family_name.clone(),
+                weight,
+                style,
+                path: relative_path,
+            });
+        }
+    }
+
+    variants.sort();
+    variants
+}
+
+fn parse_font_style(stem: &str) -> (String, String) {
+    let parts: Vec<&str> = stem.split('-').collect();
+    let style_part = parts.get(1).unwrap_or(&"Regular");
+
+    let style_lower = style_part.to_lowercase();
+
+    let (weight, style) = if style_lower.contains("bolditalic") {
+        ("Bold", "Italic")
+    } else if style_lower.contains("bold") {
+        ("Bold", "Normal")
+    } else if style_lower.contains("italic") {
+        ("Regular", "Italic")
+    } else {
+        ("Regular", "Normal")
+    };
+
+    (weight.to_string(), style.to_string())
+}
+
+fn variant_const_name(variant: &FontVariant) -> String {
+    let family_upper = variant.family.to_uppercase();
+    let suffix = match (variant.weight.as_str(), variant.style.as_str()) {
+        ("Regular", "Normal") => "REGULAR".to_string(),
+        ("Bold", "Normal") => "BOLD".to_string(),
+        ("Regular", "Italic") => "ITALIC".to_string(),
+        ("Bold", "Italic") => "BOLD_ITALIC".to_string(),
+        (w, s) => format!("{}_{}", w.to_uppercase(), s.to_uppercase()),
+    };
+    format!("{}_{}", family_upper, suffix)
+}
+
+fn constructor_name(variant: &FontVariant) -> String {
+    let family_lower = variant.family.to_lowercase();
+    match (variant.weight.as_str(), variant.style.as_str()) {
+        ("Regular", "Normal") => family_lower,
+        ("Bold", "Normal") => format!("{}_bold", family_lower),
+        ("Regular", "Italic") => format!("{}_italic", family_lower),
+        ("Bold", "Italic") => format!("{}_bold_italic", family_lower),
+        (w, s) => format!("{}_{}_{}", family_lower, w.to_lowercase(), s.to_lowercase()),
+    }
+}
+
+fn generate_bitmap_fonts(variants: &[FontVariant], manifest_dir: &str) -> String {
     let mut code = String::new();
-    code.push_str("// Auto-generated bitmap fonts\n\n");
 
-    code.push_str("#[derive(Debug, Clone, Copy)]\n");
-    code.push_str("pub struct BitmapGlyph {\n");
-    code.push_str("    pub width: u8,\n");
-    code.push_str("    pub height: u8,\n");
-    code.push_str("    pub bearing_x: i8,\n");
-    code.push_str("    pub bearing_y: i8,\n");
-    code.push_str("    pub advance: u8,\n");
-    code.push_str("    pub data_offset: usize,\n");
-    code.push_str("    pub data_len: usize,\n");
-    code.push_str("}\n\n");
+    code.push_str(
+        r#"// Auto-generated bitmap fonts
 
-    code.push_str("#[derive(Debug, Clone, Copy)]\n");
-    code.push_str("pub struct BitmapFont {\n");
-    code.push_str("    pub size: u32,\n");
-    code.push_str("    pub line_height: u8,\n");
-    code.push_str("    pub ascent: i8,\n");
-    code.push_str("    pub glyphs: &'static [BitmapGlyph],\n");
-    code.push_str("    pub data: &'static [u8],\n");
-    code.push_str("    pub char_start: u8,\n");
-    code.push_str("    pub char_end: u8,\n");
-    code.push_str("}\n\n");
+#[derive(Debug, Clone, Copy)]
+pub struct BitmapGlyph {
+    pub width: u8,
+    pub height: u8,
+    pub bearing_x: i8,
+    pub bearing_y: i8,
+    pub advance: u8,
+    pub data_offset: usize,
+    pub data_len: usize,
+}
 
-    code.push_str("impl BitmapFont {\n");
-    code.push_str("    pub fn glyph(&self, c: char) -> Option<&BitmapGlyph> {\n");
-    code.push_str("        let code = c as u8;\n");
-    code.push_str("        if code < self.char_start || code > self.char_end {\n");
-    code.push_str("            return None;\n");
-    code.push_str("        }\n");
-    code.push_str("        Some(&self.glyphs[(code - self.char_start) as usize])\n");
-    code.push_str("    }\n\n");
-    code.push_str("    pub fn glyph_data(&self, glyph: &BitmapGlyph) -> &[u8] {\n");
-    code.push_str("        &self.data[glyph.data_offset..glyph.data_offset + glyph.data_len]\n");
-    code.push_str("    }\n");
-    code.push_str("}\n\n");
+#[derive(Debug, Clone, Copy)]
+pub struct BitmapFont {
+    pub size: u32,
+    pub line_height: u8,
+    pub ascent: i8,
+    pub glyphs: &'static [BitmapGlyph],
+    pub data: &'static [u8],
+    pub char_start: u8,
+    pub char_end: u8,
+}
 
-    let all_variants: Vec<&FontVariant> = INTER_VARIANTS.iter().chain(GARAMOND_VARIANTS.iter()).collect();
+impl BitmapFont {
+    pub fn glyph(&self, c: char) -> Option<&BitmapGlyph> {
+        let code = c as u8;
+        if code < self.char_start || code > self.char_end {
+            return None;
+        }
+        Some(&self.glyphs[(code - self.char_start) as usize])
+    }
 
-    for variant in &all_variants {
-        let font_path = Path::new(&manifest_dir).join(variant.path);
-        let font_data = fs::read(&font_path).expect(&format!("Failed to read font: {}", variant.path));
+    pub fn glyph_data(&self, glyph: &BitmapGlyph) -> &[u8] {
+        &self.data[glyph.data_offset..glyph.data_offset + glyph.data_len]
+    }
+}
+
+"#,
+    );
+
+    for variant in variants {
+        let font_path = Path::new(manifest_dir).join(&variant.path);
+        let font_data = fs::read(&font_path).unwrap_or_else(|_| panic!("Failed to read font: {}", variant.path));
         let font = rusttype::Font::try_from_vec(font_data).expect("Failed to parse font");
 
         for &size in &SIZES {
@@ -119,7 +199,7 @@ fn main() {
                 }
             }
 
-            let const_name = format!("{}_{}", variant.name, size);
+            let const_name = format!("{}_{}", variant_const_name(variant), size);
 
             code.push_str(&format!("const {}_GLYPHS: &[BitmapGlyph] = &[\n", const_name));
             for (width, height, bearing_x, bearing_y, advance, data_offset, data_len) in &glyph_infos {
@@ -141,7 +221,7 @@ fn main() {
             code.push_str("];\n\n");
 
             code.push_str(&format!(
-                "pub const {}: BitmapFont = BitmapFont {{\n    size: {},\n    line_height: {},\n    ascent: {},\n    glyphs: {}_GLYPHS,\n    data: {}_DATA,\n    char_start: {},\n    char_end: {},\n}};\n\n",
+                "pub const {}: BitmapFont = BitmapFont {{ size: {}, line_height: {}, ascent: {}, glyphs: {}_GLYPHS, data: {}_DATA, char_start: {}, char_end: {} }};\n\n",
                 const_name, size, line_height, ascent, const_name, const_name, CHAR_START, CHAR_END
             ));
         }
@@ -156,21 +236,157 @@ fn main() {
     code.push_str("    };\n");
     code.push_str("    match (family, weight, style, nearest_size) {\n");
 
-    for variant in &all_variants {
-        let family = if variant.name.starts_with("INTER") { "Inter" } else { "EBGaramond" };
+    for variant in variants {
         for &size in &SIZES {
             code.push_str(&format!(
                 "        (FontFamily::{}, FontWeight::{}, FontStyle::{}, {}) => &{}_{},\n",
-                family, variant.weight, variant.style, size, variant.name, size
+                variant.family, variant.weight, variant.style, size, variant_const_name(variant), size
             ));
         }
     }
 
-    code.push_str("        _ => &INTER_REGULAR_18,\n");
+    let default_font = variants
+        .iter()
+        .find(|v| v.weight == "Regular" && v.style == "Normal")
+        .map(|v| format!("{}_{}", variant_const_name(v), 18))
+        .unwrap_or_else(|| format!("{}_{}", variant_const_name(&variants[0]), 18));
+
+    code.push_str(&format!("        _ => &{},\n", default_font));
     code.push_str("    }\n");
     code.push_str("}\n");
 
-    fs::write(Path::new(&out_dir).join("bitmap_fonts.rs"), code).unwrap();
+    code
+}
+
+fn generate_ttf_font_types(variants: &[FontVariant]) -> String {
+    let families: BTreeSet<&str> = variants.iter().map(|v| v.family.as_str()).collect();
+    let weights: BTreeSet<&str> = variants.iter().map(|v| v.weight.as_str()).collect();
+    let styles: BTreeSet<&str> = variants.iter().map(|v| v.style.as_str()).collect();
+
+    let mut code = String::new();
+
+    code.push_str(
+        r#"// Auto-generated font types
+use serde::{Deserialize, Serialize};
+
+"#,
+    );
+
+    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n");
+    code.push_str("#[serde(rename_all = \"lowercase\")]\n");
+    code.push_str("pub enum FontFamily {\n");
+    for (i, family) in families.iter().enumerate() {
+        if i == 0 {
+            code.push_str("    #[default]\n");
+        }
+        code.push_str(&format!("    {},\n", family));
+    }
+    code.push_str("}\n\n");
+
+    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n");
+    code.push_str("#[serde(rename_all = \"lowercase\")]\n");
+    code.push_str("pub enum FontWeight {\n");
+    for weight in &weights {
+        if *weight == "Regular" {
+            code.push_str("    #[default]\n");
+        }
+        code.push_str(&format!("    {},\n", weight));
+    }
+    code.push_str("}\n\n");
+
+    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n");
+    code.push_str("#[serde(rename_all = \"lowercase\")]\n");
+    code.push_str("pub enum FontStyle {\n");
+    for style in &styles {
+        if *style == "Normal" {
+            code.push_str("    #[default]\n");
+        }
+        code.push_str(&format!("    {},\n", style));
+    }
+    code.push_str("}\n\n");
+
+    code.push_str(
+        r#"#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TtfFont {
+    pub family: FontFamily,
+    pub weight: FontWeight,
+    pub style: FontStyle,
+    pub size: u32,
+}
+
+impl TtfFont {
+    pub const fn new(family: FontFamily, weight: FontWeight, style: FontStyle, size: u32) -> Self {
+        Self { family, weight, style, size }
+    }
+
+"#,
+    );
+
+    let variants_by_family: BTreeMap<&str, Vec<&FontVariant>> = {
+        let mut map: BTreeMap<&str, Vec<&FontVariant>> = BTreeMap::new();
+        for v in variants {
+            map.entry(&v.family).or_default().push(v);
+        }
+        map
+    };
+
+    for (family, family_variants) in &variants_by_family {
+        for variant in family_variants {
+            let fn_name = constructor_name(variant);
+            code.push_str(&format!(
+                "    pub const fn {}(size: u32) -> Self {{\n        Self::new(FontFamily::{}, FontWeight::{}, FontStyle::{}, size)\n    }}\n\n",
+                fn_name, family, variant.weight, variant.style
+            ));
+        }
+    }
+
+    code.push_str(
+        r#"    pub fn with_size(self, size: u32) -> Self {
+        Self { size, ..self }
+    }
+
+    pub fn with_weight(self, weight: FontWeight) -> Self {
+        Self { weight, ..self }
+    }
+
+    pub fn with_style(self, style: FontStyle) -> Self {
+        Self { style, ..self }
+    }
+}
+
+impl Default for TtfFont {
+    fn default() -> Self {
+"#,
+    );
+
+    let default_constructor = variants
+        .iter()
+        .find(|v| v.weight == "Regular" && v.style == "Normal")
+        .map(|v| constructor_name(v))
+        .unwrap_or_else(|| constructor_name(&variants[0]));
+
+    code.push_str(&format!("        Self::{}(16)\n", default_constructor));
+    code.push_str("    }\n}\n");
+
+    code
+}
+
+fn main() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+
+    let fonts_dir = Path::new(&manifest_dir).join("src/assets/fonts");
+    let variants = discover_fonts(&fonts_dir);
+
+    if variants.is_empty() {
+        panic!("No fonts found in {:?}", fonts_dir);
+    }
+
+    let bitmap_code = generate_bitmap_fonts(&variants, &manifest_dir);
+    fs::write(Path::new(&out_dir).join("bitmap_fonts.rs"), bitmap_code).unwrap();
+
+    let ttf_code = generate_ttf_font_types(&variants);
+    fs::write(Path::new(&out_dir).join("ttf_font.rs"), ttf_code).unwrap();
 
     println!("cargo:rerun-if-changed=src/assets/fonts");
 }

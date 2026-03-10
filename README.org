@@ -203,6 +203,51 @@ Fonts: ="small"=, ="medium"=, ="large"=, ="xlarge"=
 
 Colors: Hex strings (=#ff0000=) or names (=white=, =black=, =red=, etc.)
 
+* Adding Custom Fonts
+
+Fonts are auto-discovered at build time from =moondeck-core/src/assets/fonts/=.
+
+** 1. Add Font Files
+
+Create a directory with the font family name and add =.ttf= files:
+
+#+begin_src text
+moondeck-core/src/assets/fonts/
+├── Inter/
+│   ├── Inter-Regular.ttf
+│   ├── Inter-Bold.ttf
+│   ├── Inter-Italic.ttf
+│   └── Inter-BoldItalic.ttf
+├── EBGaramond/
+│   └── ...
+└── MyNewFont/              # Add your font here
+    ├── MyNewFont-Regular.ttf
+    ├── MyNewFont-Bold.ttf
+    └── MyNewFont-Italic.ttf
+#+end_src
+
+** 2. Naming Convention
+
+Files must follow the pattern: =FontName-Style.ttf=
+
+| Filename              | Generated Weight | Generated Style |
+|-----------------------+------------------+-----------------|
+| =FontName-Regular.ttf=  | Regular          | Normal          |
+| =FontName-Bold.ttf=     | Bold             | Normal          |
+| =FontName-Italic.ttf=   | Regular          | Italic          |
+| =FontName-BoldItalic.ttf= | Bold           | Italic          |
+
+** 3. Rebuild
+
+#+begin_src sh
+cargo build -p moondeck-core
+#+end_src
+
+The build script generates:
+- =FontFamily::MyNewFont= enum variant
+- =TtfFont::mynewfont(size)=, =TtfFont::mynewfont_bold(size)=, etc. constructors
+- Bitmap font data for sizes 14, 18, 24, 32
+
 ** Networking (net)
 
 | Function                              | Description        |
