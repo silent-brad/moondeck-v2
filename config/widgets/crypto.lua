@@ -11,6 +11,8 @@ function M.init(ctx)
 	local coins = ctx.opts.coins or { "bitcoin", "ethereum" }
 	local currency = ctx.opts.currency or "usd"
 
+	local fetch_interval = ctx.opts.update_interval or 60000
+
 	return {
 		x = ctx.x,
 		y = ctx.y,
@@ -20,8 +22,8 @@ function M.init(ctx)
 		currency = currency,
 		prices = {},
 		changes = {},
-		last_fetch = 0,
-		fetch_interval = ctx.opts.update_interval or 60000,
+		last_fetch = fetch_interval,
+		fetch_interval = fetch_interval,
 		loading = true,
 		error = nil,
 	}

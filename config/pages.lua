@@ -31,7 +31,7 @@ return {
 					slot = 4,
 					update_interval = 60000,
 					opts = {
-						coins = { "bitcoin", "ethereum", "litecoin", "monero" },
+						coins = { "bitcoin", "ethereum", "solana", "monero" },
 					},
 				},
 			},
