@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+// TODO:Use macros for this
+
 const SIZES: [u32; 4] = [14, 18, 24, 32];
 const CHAR_START: u8 = 32;
 const CHAR_END: u8 = 126;

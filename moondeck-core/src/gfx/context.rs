@@ -5,7 +5,7 @@ use embedded_graphics::{
     mono_font::{ascii::*, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{Circle, Line, PrimitiveStyle, Rectangle, RoundedRectangle, Triangle},
+    primitives::{Circle, Line, PrimitiveStyle, Rectangle, RoundedRectangle},
     text::Text,
 };
 
@@ -118,7 +118,7 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
     }
 
     // TODO: Remove this as I don't plan on using triangles
-    pub fn triangle(
+    /*pub fn triangle(
         &mut self,
         x1: i32,
         y1: i32,
@@ -140,7 +140,7 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
             PrimitiveStyle::with_stroke(Rgb565::from(color), 1)
         };
         let _ = tri.into_styled(style).draw(self.target);
-    }
+    }*/
 
     pub fn text(&mut self, x: i32, y: i32, s: &str, color: Color, font: Font) {
         let rgb_color = Rgb565::from(color);

@@ -209,7 +209,7 @@ fn main() -> Result<()> {
     // Get theme background color from Lua config
     let theme_name = lua_runtime.get_current_theme();
     let theme_bg_hex = lua_runtime.get_theme_background();
-    let theme_bg = Color::from_hex(&theme_bg_hex).unwrap_or(Color::BLACK);
+    let theme_bg = Color::from_hex(&theme_bg_hex).unwrap_or(Color::WHITE);
     info!("Theme: {}, background: {}", theme_name, theme_bg_hex);
 
     draw_loading_screen(&mut framebuffer, &mut display, "Ready!", None)?;
@@ -228,10 +228,10 @@ fn draw_loading_screen(
     sub_message: Option<&str>,
 ) -> Result<()> {
     // Use theme colors
-    let bg_color = Color::from_hex(ThemeColors::bg_primary()).unwrap_or(Color::BLACK);
+    let bg_color = Color::from_hex(ThemeColors::bg_primary()).unwrap_or(Color::WHITE);
     let text_color = Color::from_hex(ThemeColors::text_primary()).unwrap_or(Color::WHITE);
-    let accent_color = Color::from_hex(ThemeColors::accent_primary()).unwrap_or(Color::CYAN);
-    let muted_color = Color::from_hex(ThemeColors::text_muted()).unwrap_or(Color::GRAY);
+    let accent_color = Color::from_hex(ThemeColors::accent_primary()).unwrap_or(Color::WHITE);
+    let muted_color = Color::from_hex(ThemeColors::text_muted()).unwrap_or(Color::WHITE);
 
     {
         let mut draw_ctx = DrawContext::new(framebuffer);
@@ -243,7 +243,7 @@ fn draw_loading_screen(
             (DISPLAY_HEIGHT as i32 / 2) - 60,
             "Moondeck",
             accent_color,
-            TtfFont::garamond(42),
+            TtfFont::garamond(60),
         );
 
         // Main message
@@ -391,7 +391,7 @@ fn run_main_loop(
         process_touch(touch_controller, &mut gesture_processor, page_manager);
 
         // Get theme colors for UI elements
-        let ui_text_color = Color::from_hex(ThemeColors::text_muted()).unwrap_or(Color::GRAY);
+        let ui_text_color = Color::from_hex(ThemeColors::text_muted()).unwrap_or(Color::WHITE);
 
         // Render
         {

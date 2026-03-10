@@ -97,7 +97,7 @@ impl LuaDrawCommands {
     }
 }
 
-fn parse_color(s: &str) -> Color {
+/*fn parse_color(s: &str) -> Color {
     match s.to_lowercase().as_str() {
         "black" => Color::BLACK,
         "white" => Color::WHITE,
@@ -110,7 +110,7 @@ fn parse_color(s: &str) -> Color {
         "gray" | "grey" => Color::GRAY,
         _ => Color::from_hex(s).unwrap_or(Color::WHITE),
     }
-}
+}*/
 
 fn parse_font(size_name: &str) -> Font {
     match size_name.to_lowercase().as_str() {
@@ -124,14 +124,14 @@ fn parse_font(size_name: &str) -> Font {
 
 fn color_from_value(val: Value) -> Color {
     match val {
-        Value::String(s) => parse_color(s.to_str().unwrap_or("#FFFFFF")),
+        Value::String(s) => Color::from_hex(s.to_str().unwrap_or("#FFFFFF")).unwrap(),
         Value::Integer(i) => {
             let r = ((i >> 16) & 0xFF) as u8;
             let g = ((i >> 8) & 0xFF) as u8;
             let b = (i & 0xFF) as u8;
             Color::new(r, g, b)
         }
-        _ => Color::WHITE,
+        _ => Color::from_hex("#FFFFFF").unwrap(),
     }
 }
 
@@ -360,7 +360,7 @@ pub fn register_gfx(lua: &mut Lua) -> Result<()> {
             Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
                 let (_self, x, y, text, color, font_size): (Value, Value, Value, Value, Value, Value) =
                     stack.consume(ctx)?;
-                
+
                 // Convert text to string - handle both string and number values
                 let text_str = match text {
                     Value::String(s) => s.to_str().unwrap_or("").to_string(),
@@ -368,13 +368,13 @@ pub fn register_gfx(lua: &mut Lua) -> Result<()> {
                     Value::Number(n) => n.to_string(),
                     _ => String::new(),
                 };
-                
+
                 // Convert font_size to string
                 let font_str = match font_size {
                     Value::String(s) => s.to_str().unwrap_or("medium").to_string(),
                     _ => "medium".to_string(),
                 };
-                
+
                 let (ox, oy) = DRAW_COMMANDS.with(|dc| dc.get_offset());
                 DRAW_COMMANDS.with(|dc| {
                     dc.push(DrawCommand::Text {

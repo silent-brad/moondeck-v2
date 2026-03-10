@@ -68,7 +68,7 @@ impl LuaRuntime {
         self.load_pages_from_config()
             .or_else(|e| {
                 log::warn!("Failed to load pages from config: {}, using demo pages", e);
-                Ok(create_demo_pages())
+                Ok(vec![Page::new("home", "Home")])
             })
     }
 
@@ -315,30 +315,6 @@ fn value_to_json<'gc>(ctx: piccolo::Context<'gc>, value: Value<'gc>) -> serde_js
         Value::Table(t) => table_to_json(ctx, t),
         _ => serde_json::Value::Null,
     }
-}
-
-// TODO: Remove this function:
-fn create_demo_pages() -> Vec<Page> {
-    vec![
-        Page::new("home", "Home")
-            .with_widget(
-                WidgetInstance::new("clock", 20, 20, 360, 180)
-                    .with_update_interval(1000),
-            )
-            .with_widget(
-                WidgetInstance::new("status", 400, 20, 380, 180)
-                    .with_update_interval(1000),
-            )
-            .with_widget(
-                WidgetInstance::new("quote", 20, 250, 360, 180)
-                    .with_update_interval(1000),
-            ),
-        Page::new("info", "System Info")
-            .with_widget(
-                WidgetInstance::new("sysinfo", 20, 20, 760, 420)
-                    .with_update_interval(2000),
-            ),
-    ]
 }
 
 impl Default for LuaRuntime {

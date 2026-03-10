@@ -221,27 +221,27 @@ fn parse_default_theme(content: &str) -> String {
 
 fn generate_embedded_modules(manifest_dir: &str, out_dir: &str) {
     let config_dir = Path::new(manifest_dir).join("../config");
-    
+
     let modules = ["components.lua", "theme.lua"];
-    
+
     let mut code = String::from("/// Auto-generated embedded Lua module sources\nconst EMBEDDED_LUA_MODULES: &[(&str, &str)] = &[\n");
-    
+
     for module_file in &modules {
         let path = config_dir.join(module_file);
         if path.exists() {
             let name = module_file.strip_suffix(".lua").unwrap_or(module_file);
             let abs_path = fs::canonicalize(&path).unwrap();
             let abs_path_str = abs_path.display().to_string().replace('\\', "/");
-            
+
             code.push_str(&format!(
                 "    (\"{}\", include_str!(\"{}\")),\n",
                 name, abs_path_str
             ));
         }
     }
-    
+
     code.push_str("];\n");
-    
+
     fs::write(Path::new(out_dir).join("embedded_modules.rs"), code).unwrap();
     println!("cargo:rerun-if-changed=../config/components.lua");
     println!("cargo:rerun-if-changed=../config/theme.lua");
