@@ -86,15 +86,15 @@ impl<'d> WifiManager<'d> {
         log::info!("Initializing SNTP time sync...");
 
         let sntp_conf = SntpConf {
-            servers: ["pool.ntp.org"],
+            servers: ["time.google.com"],
             ..Default::default()
         };
 
         match EspSntp::new(&sntp_conf) {
             Ok(sntp) => {
-                // Wait for time sync (up to 10 seconds)
+                // Wait for time sync (up to 15 seconds) - NTP can be slow on first connect
                 let mut attempts = 0;
-                while sntp.get_sync_status() != SyncStatus::Completed && attempts < 100 {
+                while sntp.get_sync_status() != SyncStatus::Completed && attempts < 150 {
                     std::thread::sleep(Duration::from_millis(100));
                     attempts += 1;
                 }
@@ -102,7 +102,8 @@ impl<'d> WifiManager<'d> {
                 if sntp.get_sync_status() == SyncStatus::Completed {
                     log::info!("SNTP time synchronized successfully");
                 } else {
-                    log::warn!("SNTP sync timeout, time may be incorrect");
+                    // Don't warn - time sync will continue in background
+                    log::info!("SNTP sync pending, will complete in background");
                 }
 
                 self._sntp = Some(sntp);

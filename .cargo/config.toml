@@ -14,8 +14,10 @@ ESP_IDF_SYS_ROOT_CRATE = "moondeck-app"
 build-std = ["std", "panic_abort"]
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"
 lto = "fat"
+codegen-units = 1
+strip = "symbols"
 
 [profile.dev]
 debug = true
