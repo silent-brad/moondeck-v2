@@ -1,57 +1,14 @@
 -- Stocks Widget
--- Fetches stock prices from Stockdata.org API
+-- Fetches stock prices from Finnhub.io API
 
-local theme = require("theme")
 local components = require("components")
 
 local M = {}
 
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_secondary = "#a0a0b0",
-		text_muted = "#606070",
-		text_accent = "#00d4ff",
-		accent_primary = "#00d4ff",
-		accent_secondary = "#e94560",
-		accent_success = "#00ff88",
-		accent_warning = "#ffaa00",
-		accent_error = "#ff4466",
-		bg_tertiary = "#1a1a2e",
-		border_primary = "#2a2a3e",
-	}
-end
-
--- Safe env getter
-local function env_get(key)
-	if env and type(env.get) == "function" then
-		return env.get(key)
-	end
-	return nil
-end
-
 function M.init(ctx)
-	-- Parse symbol list from env or opts (simplified to avoid string.gmatch issues)
-	local symbols_str = ctx.opts.symbols or env_get("STOCKS_SYMBOLS") or "AAPL,GOOGL"
-	local symbols = { "AAPL", "GOOGL" } -- Default symbols
+	local symbols = ctx.opts.symbols or { "AAPL", "GOOGL" }
 
-	-- Only try advanced parsing if string_gmatch exists
-	if type(string_gmatch) == "function" then
-		symbols = {}
-		for symbol in string_gmatch(symbols_str, "([^,]+)") do
-			-- Simple trim and uppercase without method syntax
-			local trimmed = string_gsub(symbol, "^%s*(.-)%s*$", "%1")
-			table_insert(symbols, string_upper(trimmed))
-		end
-	end
+	local fetch_interval = ctx.opts.update_interval or 300000 -- 5 minutes
 
 	return {
 		x = ctx.x,
@@ -61,23 +18,61 @@ function M.init(ctx)
 		symbols = symbols,
 		prices = {},
 		changes = {},
-		last_fetch = 0,
-		fetch_interval = ctx.opts.update_interval or 300000, -- 5 minutes
+		current_symbol_index = 1,
+		last_fetch = fetch_interval,
+		fetch_interval = fetch_interval,
 		loading = true,
 		error = nil,
 	}
 end
 
 function M.update(state, delta_ms)
-	-- Only do simple arithmetic - no stdlib calls work in piccolo across try_enter
 	state.last_fetch = state.last_fetch + delta_ms
+
+	if state.last_fetch >= state.fetch_interval then
+		state.last_fetch = 0
+
+		local api_key = env.get("STOCKS_API_KEY")
+		if not api_key then
+			state.error = "No API key"
+			state.loading = false
+			return
+		end
+
+		-- Finnhub only supports one symbol per request, fetch all symbols
+		local success_count = 0
+		for i = 1, #state.symbols do
+			local symbol = state.symbols[i]
+			local url = "https://finnhub.io/api/v1/quote?symbol=" .. symbol .. "&token=" .. api_key
+
+			local response = net.http_get(url, {}, 10000)
+
+			if response and response.ok and response.body then
+				local data = net.json_decode(response.body)
+
+				if data and data.c then
+					state.prices[symbol] = data.c -- current price
+					state.changes[symbol] = data.dp -- percent change
+					success_count = success_count + 1
+				end
+			end
+		end
+
+		if success_count > 0 then
+			state.loading = false
+			state.error = nil
+		else
+			state.error = "Failed to fetch"
+			state.loading = false
+		end
+	end
 end
 
 local function format_price(price)
 	if not price then
 		return "—"
 	end
-	return "$" .. string_format("%.2f", price)
+	return "$" .. util.format("%.2f", price)
 end
 
 local function format_change(change)
@@ -85,14 +80,20 @@ local function format_change(change)
 		return "—", "info"
 	end
 
-	local sign = change >= 0 and "+" or ""
-	local status = change >= 0 and "ok" or "error"
+	local sign = ""
+	local status = "info"
+	if change >= 0 then
+		sign = "+"
+		status = "ok"
+	else
+		status = "error"
+	end
 
-	return sign .. string_format("%.2f%%", change), status
+	return sign .. util.format("%.2f", change) .. "%", status
 end
 
 function M.render(state, gfx)
-	local th = get_theme()
+	local th = theme:get()
 	local px, py = 20, 15
 
 	-- Draw card
@@ -103,7 +104,7 @@ function M.render(state, gfx)
 		accent = th.accent_secondary,
 	})
 
-	local content_y = py + title_h + 10
+	local content_y = py + title_h + 25
 
 	if state.loading then
 		components.loading(gfx, px, content_y + 20)
@@ -117,13 +118,14 @@ function M.render(state, gfx)
 
 	-- Display each stock
 	local row_height = 28
-	local max_rows = math_floor((state.height - content_y - py) / row_height)
+	local max_rows = math.floor((state.height - content_y - py) / row_height)
 
-	for i, symbol in ipairs(state.symbols) do
+	for i = 1, #state.symbols do
 		if i > max_rows then
 			break
 		end
 
+		local symbol = state.symbols[i]
 		local y = content_y + (i - 1) * row_height
 		local price = format_price(state.prices[symbol])
 		local change_str, change_status = format_change(state.changes[symbol])
@@ -136,14 +138,17 @@ function M.render(state, gfx)
 		gfx:text(price_x, y, price, th.text_primary, "medium")
 
 		-- Change (right)
-		local change_color = change_status == "ok" and th.accent_success
-			or change_status == "error" and th.accent_error
-			or th.text_muted
+		local change_color = th.text_muted
+		if change_status == "ok" then
+			change_color = th.accent_success
+		elseif change_status == "error" then
+			change_color = th.accent_error
+		end
 		gfx:text(state.width - px - 60, y, change_str, change_color, "small")
 	end
 
 	-- Market status indicator
-	local now_hours = math_floor(device.seconds() / 3600) % 24
+	local now_hours = math.floor(device.seconds() / 3600) % 24
 	local market_open = now_hours >= 14 and now_hours < 21 -- Rough EST market hours in UTC
 	local status_text = market_open and "Market Open" or "Market Closed"
 	local status_color = market_open and th.accent_success or th.text_muted

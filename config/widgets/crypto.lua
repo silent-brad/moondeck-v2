@@ -7,7 +7,6 @@ local components = require("components")
 local M = {}
 
 function M.init(ctx)
-	-- TODO: Add env var for coins
 	local coins = ctx.opts.coins or { "bitcoin", "ethereum" }
 	local currency = ctx.opts.currency or "usd"
 

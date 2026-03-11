@@ -1,44 +1,13 @@
 -- RSS Widget
 -- Fetches feed entries from Miniflux API
 
-local theme = require("theme")
 local components = require("components")
 
 local M = {}
 
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_secondary = "#a0a0b0",
-		text_muted = "#606070",
-		text_accent = "#00d4ff",
-		accent_primary = "#00d4ff",
-		accent_secondary = "#e94560",
-		accent_success = "#00ff88",
-		accent_warning = "#ffaa00",
-		accent_error = "#ff4466",
-		bg_tertiary = "#1a1a2e",
-		border_primary = "#2a2a3e",
-	}
-end
-
--- Safe env getter
-local function env_get(key)
-	if env and type(env.get) == "function" then
-		return env.get(key)
-	end
-	return nil
-end
-
 function M.init(ctx)
+	local fetch_interval = ctx.opts.update_interval or 300000 -- 5 minutes
+
 	return {
 		x = ctx.x,
 		y = ctx.y,
@@ -47,16 +16,76 @@ function M.init(ctx)
 		entries = {},
 		current_index = 1,
 		limit = ctx.opts.limit or 10,
-		last_fetch = 0,
-		fetch_interval = ctx.opts.update_interval or 300000, -- 5 minutes
+		last_fetch = fetch_interval,
+		fetch_interval = fetch_interval,
 		loading = true,
 		error = nil,
 	}
 end
 
 function M.update(state, delta_ms)
-	-- Only do simple arithmetic - no stdlib calls work in piccolo across try_enter
 	state.last_fetch = state.last_fetch + delta_ms
+
+	if state.last_fetch >= state.fetch_interval then
+		state.last_fetch = 0
+
+		local api_url = env.get("MINIFLUX_URL")
+		local api_key = env.get("MINIFLUX_API_KEY")
+
+		if not api_url then
+			state.error = "No MINIFLUX_URL"
+			state.loading = false
+			return
+		end
+
+		if not api_key then
+			state.error = "No API key"
+			state.loading = false
+			return
+		end
+
+		-- Miniflux API: GET /v1/entries?status=unread&limit=N
+		local url = api_url .. "/v1/entries?status=unread&limit=" .. state.limit .. "&direction=desc&order=published_at"
+
+		local headers = {
+			["X-Auth-Token"] = api_key,
+		}
+
+		local response = net.http_get(url, headers, 15000)
+
+		if response and response.ok and response.body then
+			local data = net.json_decode(response.body)
+
+			if data and data.entries then
+				state.entries = {}
+				local idx = 1
+				for i = 1, #data.entries do
+					local entry = data.entries[i]
+					if entry then
+						local feed_title = ""
+						if entry.feed and entry.feed.title then
+							feed_title = entry.feed.title
+						end
+						state.entries[idx] = {
+							id = entry.id,
+							title = entry.title or "Untitled",
+							feed = feed_title,
+							url = entry.url,
+						}
+						idx = idx + 1
+					end
+				end
+				state.loading = false
+				state.error = nil
+			else
+				state.error = "Invalid response"
+				state.loading = false
+			end
+		else
+			state.error = response and response.error or "Network error"
+			state.loading = false
+		end
+	end
 end
 
 -- Truncate text with ellipsis
@@ -67,32 +96,15 @@ local function truncate(text, max_len)
 	if #text <= max_len then
 		return text
 	end
-	return text:sub(1, max_len - 3) .. "..."
-end
-
--- Format relative time
-local function time_ago(timestamp)
-	if not timestamp then
-		return ""
+	local truncated = ""
+	for i = 1, max_len - 3 do
+		truncated = truncated .. string.sub(text, i, i)
 	end
-
-	-- Simple parsing - assumes ISO format
-	local now = device.seconds()
-
-	-- Very rough estimate (would need proper date parsing)
-	local hours_ago = math_floor((now % 86400) / 3600)
-
-	if hours_ago < 1 then
-		return "Just now"
-	elseif hours_ago < 24 then
-		return hours_ago .. "h ago"
-	else
-		return math_floor(hours_ago / 24) .. "d ago"
-	end
+	return truncated .. "..."
 end
 
 function M.render(state, gfx)
-	local th = get_theme()
+	local th = theme:get()
 	local px, py = 20, 15
 
 	-- Draw card
@@ -108,7 +120,7 @@ function M.render(state, gfx)
 		accent = th.accent_primary,
 	})
 
-	local content_y = py + title_h + 10
+	local content_y = py + title_h + 25
 
 	if state.loading then
 		components.loading(gfx, px, content_y + 20)
@@ -127,14 +139,15 @@ function M.render(state, gfx)
 
 	-- Display entries as list
 	local row_height = 45
-	local max_rows = math_floor((state.height - content_y - py - 20) / row_height)
-	local title_max_chars = math_floor((state.width - px * 2) / 7)
+	local max_rows = math.floor((state.height - content_y - py - 20) / row_height)
+	local title_max_chars = math.floor((state.width - px * 2) / 7)
 
-	for i, entry in ipairs(state.entries) do
+	for i = 1, #state.entries do
 		if i > max_rows then
 			break
 		end
 
+		local entry = state.entries[i]
 		local y = content_y + (i - 1) * row_height
 
 		-- Entry indicator
@@ -144,9 +157,8 @@ function M.render(state, gfx)
 		local title_text = truncate(entry.title, title_max_chars)
 		gfx:text(px + 15, y, title_text, th.text_primary, "medium")
 
-		-- Feed name and time
-		local meta = entry.feed
-		gfx:text(px + 15, y + 18, meta, th.text_muted, "small")
+		-- Feed name
+		gfx:text(px + 15, y + 18, entry.feed, th.text_muted, "small")
 	end
 
 	-- Navigation hint at bottom

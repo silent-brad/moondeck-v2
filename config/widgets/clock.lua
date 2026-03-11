@@ -1,28 +1,15 @@
 -- Clock Widget
--- Displays current time and date with TRMNL-inspired styling
 
-local theme = require("theme")
 local components = require("components")
 
 local M = {}
 
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_muted = "#606070",
-		accent_primary = "#00d4ff",
-	}
-end
-
 function M.init(ctx)
+	-- Set timezone on init (hours offset from UTC)
+	-- Examples: -5 for EST, -4 for EDT, 0 for UTC, 1 for CET
+	local tz_offset = ctx.opts.timezone or -5 -- Default to EST
+	device.set_timezone(tz_offset)
+
 	return {
 		x = ctx.x,
 		y = ctx.y,
@@ -39,35 +26,24 @@ function M.update(state, delta_ms)
 	state.last_update = state.last_update + delta_ms
 end
 
--- Safe floor function
-local function floor(n)
-	if math and math.floor then
-		return math.floor(n)
-	end
-	-- Fallback: truncate towards zero
-	local i = n - (n % 1)
-	if n < 0 and i ~= n then
-		return i - 1
-	end
-	return i
-end
-
--- Safe string format (for time display)
-local function format_time_component(n)
+local function pad2(n)
 	if n < 10 then
 		return "0" .. n
 	end
 	return "" .. n
 end
 
-function M.render(state, gfx)
-	local th = get_theme()
-	local now = device and device.seconds and device.seconds() or 0
+local month_names = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
+local weekday_names = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" }
 
-	-- Calculate time components
-	local secs = now % 60
-	local mins = floor(now / 60) % 60
-	local hours = floor(now / 3600) % 24
+function M.render(state, gfx)
+	local th = theme:get()
+	local t = device.localtime()
+	--print(t.hour, t.min, t.sec, t.weekday, t.month, t.day, t.year)
+
+	local hours = t.hour
+	local mins = t.min
+	local secs = t.sec
 
 	-- Draw card background
 	components.card(gfx, 0, 0, state.width, state.height)
@@ -87,44 +63,37 @@ function M.render(state, gfx)
 		end
 	end
 
-	-- Build time string
+	-- Build time string (hours not padded, minutes/seconds padded)
 	local time_str
 	if state.show_seconds then
-		time_str = format_time_component(display_hours) .. ":" .. format_time_component(mins) .. ":" .. format_time_component(secs)
+		time_str = display_hours .. ":" .. pad2(mins) .. ":" .. pad2(secs)
 	else
-		time_str = format_time_component(display_hours) .. ":" .. format_time_component(mins)
+		time_str = display_hours .. ":" .. pad2(mins)
 	end
 
 	-- Draw time (centered, large)
 	local time_x = state.width / 2 - (#time_str * 14) / 2
 	local time_y = state.height / 2 - 10
 
-	if gfx and gfx.text then
-		gfx:text(time_x, time_y, time_str, th.text_primary or "#ffffff", "xlarge")
+	gfx:text(time_x, time_y, time_str, th.text_primary, "xlarge")
 
-		-- Draw AM/PM indicator
-		if not state.format_24h then
-			gfx:text(time_x + #time_str * 14 + 10, time_y + 8, am_pm, th.text_muted or "#606070", "medium")
-		end
+	-- Draw AM/PM indicator
+	if not state.format_24h then
+		gfx:text(time_x + #time_str * 14 + 10, time_y + 8, am_pm, th.text_muted, "medium")
+	end
 
-		-- Draw date if enabled
-		if state.show_date then
-			local days = floor(now / 86400)
-			-- Simple day calculation (approximate)
-			local weekdays = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" }
-			local weekday = weekdays[(days % 7) + 1]
+	-- Draw date if enabled
+	if state.show_date then
+		local weekday = weekday_names[t.weekday]
+		local month = month_names[t.month]
+		local date_str = weekday .. ", " .. month .. " " .. t.day .. ", " .. t.year
 
-			local date_str = weekday .. " • Day " .. (days % 365 + 1)
-			local date_x = state.width / 2 - (#date_str * 4)
-
-			gfx:text(date_x, time_y + 40, date_str, th.text_muted or "#606070", "medium")
-		end
+		local date_x = state.width / 2 - (#date_str * 4)
+		gfx:text(date_x, time_y + 40, date_str, th.text_muted, "medium")
 	end
 
 	-- Accent line at top
-	if gfx and gfx.line then
-		gfx:line(px, py, state.width - px, py, th.accent_primary or "#00d4ff", 2)
-	end
+	gfx:line(px, py, state.width - px, py, th.accent_primary, 2)
 end
 
 function M.on_event(state, event)

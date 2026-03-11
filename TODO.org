@@ -20,12 +20,11 @@
 *** DONE Weather
 *** DONE Quote
 *** DONE Crypto
-
-*** TODO Bible
-*** TODO RSS
-*** TODO Stocks
-*** TODO Clock
-*** TODO Status
+*** DONE Stocks
+*** DONE Bible
+*** DONE RSS
+*** DONE Status
+*** DONE Clock
 
 
 ** TODO Handle layouts card/component sizing

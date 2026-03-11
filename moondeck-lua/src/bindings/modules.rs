@@ -175,10 +175,10 @@ fn load_lua_module<'gc>(ctx: piccolo::Context<'gc>, name: &str, source: &str) ->
             return Err(e.into());
         }
     };
-    
+
     let executor = Executor::start(ctx, closure.into(), ());
     let stashed = ctx.stash(executor);
-    
+
     let mut fuel = Fuel::with(500000);
     let exec = ctx.fetch(&stashed);
     while !exec.step(ctx, &mut fuel) {
@@ -187,7 +187,7 @@ fn load_lua_module<'gc>(ctx: piccolo::Context<'gc>, name: &str, source: &str) ->
             break;
         }
     }
-    
+
     let result = exec.take_result::<Value>(ctx)?;
     match result {
         Ok(v) => {
@@ -220,11 +220,11 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
     lua.try_enter(|ctx| {
         // First, set up the basic require function that will be used by embedded modules
         // We need a two-phase approach: first create placeholder, then load modules
-        
+
         // Create a table to store loaded modules
         let loaded_modules = Table::new(&ctx);
         ctx.set_global("__loaded_modules", loaded_modules)?;
-        
+
         // Create theme module (Rust implementation that syncs with Rust state)
         // This wraps the Lua theme module with Rust state synchronization
         let theme_table = Table::new(&ctx);
@@ -243,18 +243,31 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
             }),
         )?;
 
+        // Create a get function that handles method call syntax: theme:get()
+        // Piccolo passes self as first argument for method calls
         theme_table.set(
             ctx,
             "get",
             Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-                let _self_table: Value = stack.consume(ctx)?;
-                let theme = CURRENT_THEME.read().unwrap().clone();
-                let colors = create_theme_colors_table(ctx, &theme)?;
+                // Consume self argument if present (method call: theme:get())
+                // Stack might be empty for direct function call
+                if stack.len() > 0 {
+                    let _self_table: Value = stack.consume(ctx)?;
+                }
+                
+                let theme_name_str = CURRENT_THEME.read().unwrap().clone();
+                let theme_name: &str = if theme_name_str.is_empty() { 
+                    DEFAULT_THEME 
+                } else { 
+                    &theme_name_str
+                };
+                log::trace!("theme:get() returning colors for theme '{}'", theme_name);
+                let colors = create_theme_colors_table(ctx, theme_name)?;
                 stack.replace(ctx, colors);
                 Ok(CallbackReturn::Return)
             }),
         )?;
-        
+
         // Also expose themes table for compatibility with Lua theme module
         let themes_table = Table::new(&ctx);
         for theme_name in THEME_NAMES {
@@ -262,7 +275,7 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
             themes_table.set(ctx, ctx.intern(theme_name.as_bytes()), theme_colors)?;
         }
         theme_table.set(ctx, "themes", themes_table)?;
-        
+
         // Set current theme name
         {
             let current = CURRENT_THEME.read().unwrap();
@@ -287,17 +300,18 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
         log::info!("Available Lua modules: {:?}", EMBEDDED_LUA_MODULES.iter().map(|(n, _)| *n).collect::<Vec<_>>());
         if let Some(components_src) = get_lua_module_source("components") {
             log::info!("Loading components.lua module ({} bytes)", components_src.len());
-            
-            // First we need a temporary require for the theme
+
+            // Temporary require for loading components - creates fresh theme table each time
             ctx.set_global(
                 "require",
                 Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
                     let module_name: LuaString = stack.consume(ctx)?;
                     let module_str = module_name.to_str().unwrap_or("");
 
-                    let result = match module_str {
+                    let result: Value = match module_str {
                         "theme" => {
                             log::debug!("require('theme') called during components load");
+                            // Return the theme module table directly from global
                             ctx.globals().get(ctx, "__theme_module")
                         }
                         "layout" => ctx.globals().get(ctx, "__layout_module"),
@@ -322,7 +336,7 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
                     Ok(CallbackReturn::Return)
                 }),
             )?;
-            
+
             match load_lua_module(ctx, "components", components_src) {
                 Ok(components_module) => {
                     log::info!("Successfully loaded components.lua module");
@@ -377,7 +391,7 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
         let preflight_check = r#"
             return true, "ok"
         "#;
-        
+
         match Closure::load(ctx, Some("preflight"), preflight_check.as_bytes()) {
             Ok(closure) => {
                 let executor = Executor::start(ctx, closure.into(), ());

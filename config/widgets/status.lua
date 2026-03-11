@@ -1,34 +1,8 @@
 -- Status Widget
--- Displays WiFi and system status with TRMNL styling
 
-local theme = require("theme")
 local components = require("components")
 
 local M = {}
-
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_secondary = "#a0a0b0",
-		text_muted = "#606070",
-		text_accent = "#00d4ff",
-		accent_primary = "#00d4ff",
-		accent_secondary = "#e94560",
-		accent_success = "#00ff88",
-		accent_warning = "#ffaa00",
-		accent_error = "#ff4466",
-		bg_tertiary = "#1a1a2e",
-		border_primary = "#2a2a3e",
-	}
-end
 
 function M.init(ctx)
 	return {
@@ -74,9 +48,9 @@ local function format_uptime(ms)
 	local days = math.floor(secs / 86400)
 
 	if days > 0 then
-		return string.format("%dd %02d:%02d", days, hours, mins)
+		return util.format("%dd %02d:%02d", days, hours, mins)
 	else
-		return string.format("%02d:%02d:%02d", hours, mins, secs % 60)
+		return util.format("%02d:%02d:%02d", hours, mins, secs % 60)
 	end
 end
 
@@ -93,7 +67,8 @@ local function rssi_to_strength(rssi)
 end
 
 function M.render(state, gfx)
-	local th = get_theme()
+	-- Get theme colors directly from the global theme module
+	local th = theme:get()
 	local px, py = 20, 15
 
 	-- Draw card
@@ -110,7 +85,8 @@ function M.render(state, gfx)
 	-- WiFi Status
 	local wifi_status = state.wifi_connected and "Connected" or "Disconnected"
 	local wifi_indicator = state.wifi_connected and "ok" or "error"
-	components.status(gfx, px, content_y, "WiFi: " .. wifi_status, wifi_indicator)
+
+	components.status(gfx, px, content_y, "WiFi: " .. wifi_status, wifi_indicator, {})
 
 	content_y = content_y + row_height
 
@@ -128,7 +104,8 @@ function M.render(state, gfx)
 			px,
 			content_y,
 			"Signal: " .. strength_text .. " (" .. state.rssi .. " dBm)",
-			strength_status
+			strength_status,
+			{}
 		)
 		content_y = content_y + row_height
 	end

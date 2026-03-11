@@ -5,71 +5,13 @@ local theme = require("theme")
 
 local Components = {}
 
--- Safe math functions (avoids upvalue issues with piccolo)
-local function floor(n)
-	if math and math.floor then
-		return math.floor(n)
-	end
-	local i = n - (n % 1)
-	if n < 0 and i ~= n then
-		return i - 1
-	end
-	return i
-end
-
-local function max(a, b)
-	if math and math.max then
-		return math.max(a, b)
-	end
-	return a > b and a or b
-end
-
-local function min(a, b)
-	if math and math.min then
-		return math.min(a, b)
-	end
-	return a < b and a or b
-end
-
--- Default theme colors fallback
-local default_colors = {
-	bg_primary = "#0a0a0f",
-	bg_secondary = "#12121a",
-	bg_tertiary = "#1a1a2e",
-	bg_card = "#16162a",
-	text_primary = "#ffffff",
-	text_secondary = "#a0a0b0",
-	text_muted = "#606070",
-	text_accent = "#00d4ff",
-	accent_primary = "#00d4ff",
-	accent_secondary = "#e94560",
-	accent_success = "#00ff88",
-	accent_warning = "#ffaa00",
-	accent_error = "#ff4466",
-	border_primary = "#2a2a3e",
-	border_accent = "#00d4ff",
-	card_radius = 12,
-	border_width = 1,
-}
-
--- Get current theme with fallback
-local function t()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	return default_colors
-end
-
 -- Card component: rounded rectangle with border (uses theme defaults)
 function Components.card(gfx, x, y, w, h)
 	if not gfx then
 		return
 	end
 
-	local th = t()
+	local th = theme:get()
 
 	local bg = th.bg_card or "#16162a"
 	local radius = th.card_radius or 12
@@ -89,11 +31,8 @@ end
 
 -- Title bar component
 function Components.title_bar(gfx, x, y, w, title, opts)
-	if not gfx then
-		return 35
-	end
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local color = opts.color or th.text_primary or "#ffffff"
 	local accent = opts.accent or th.accent_primary or "#00d4ff"
@@ -117,7 +56,7 @@ end
 -- Value display: large number with label
 function Components.value_display(gfx, x, y, value, label, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local value_color = opts.value_color or th.text_primary
 	local label_color = opts.label_color or th.text_muted
@@ -139,7 +78,7 @@ end
 -- Item row: icon/indicator + label + value
 function Components.item_row(gfx, x, y, w, label, value, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local label_color = opts.label_color or th.text_secondary
 	local value_color = opts.value_color or th.text_primary
@@ -168,7 +107,7 @@ end
 -- Divider line
 function Components.divider(gfx, x, y, w, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local color = opts.color or th.border_primary
 	local thickness = opts.thickness or 1
@@ -181,21 +120,21 @@ end
 -- Progress bar
 function Components.progress_bar(gfx, x, y, w, h, progress, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local bg = opts.bg or th.bg_tertiary
 	local fg = opts.fg or th.accent_primary
 	local radius = opts.radius or (h / 2)
 
 	-- Clamp progress to 0-1
-	progress = max(0, min(1, progress))
+	progress = math.max(0, math.min(1, progress))
 
 	-- Draw background
 	gfx:fill_rounded_rect(x, y, w, h, radius, bg)
 
 	-- Draw fill
 	if progress > 0 then
-		local fill_w = max(h, w * progress)
+		local fill_w = math.max(h, w * progress)
 		gfx:fill_rounded_rect(x, y, fill_w, h, radius, fg)
 	end
 
@@ -205,7 +144,7 @@ end
 -- Status indicator (dot + text)
 function Components.status(gfx, x, y, text, status, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local colors = {
 		ok = th.accent_success,
@@ -230,7 +169,7 @@ end
 -- Mini chart (sparkline)
 function Components.sparkline(gfx, x, y, w, h, data, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local color = opts.color or th.accent_primary
 	local thickness = opts.thickness or 2
@@ -263,7 +202,7 @@ function Components.sparkline(gfx, x, y, w, h, data, opts)
 		local x2 = x + i * step
 		local y2 = y + h - ((data[i + 1] - min_val) / range * h)
 
-		gfx:line(floor(x1), floor(y1), floor(x2), floor(y2), color, thickness)
+		gfx:line(math.floor(x1), math.floor(y1), math.floor(x2), math.floor(y2), color, thickness)
 	end
 
 	return h
@@ -272,7 +211,7 @@ end
 -- Icon placeholder (circle with letter)
 function Components.icon(gfx, x, y, size, letter, opts)
 	opts = opts or {}
-	local th = t()
+	local th = theme:get()
 
 	local bg = opts.bg or th.accent_primary
 	local fg = opts.fg or th.bg_primary
@@ -286,7 +225,7 @@ end
 
 -- Loading indicator
 function Components.loading(gfx, x, y, text)
-	local th = t()
+	local th = theme:get()
 	text = text or "Loading..."
 	gfx:text(x, y, text, th.text_muted, "medium")
 	return 20
@@ -294,7 +233,7 @@ end
 
 -- Error display
 function Components.error(gfx, x, y, w, message)
-	local th = t()
+	local th = theme:get()
 	gfx:text(x, y, "Error", th.accent_error, "medium")
 	gfx:text(x, y + 18, message or "Unknown error", th.text_muted, "small")
 	return 40

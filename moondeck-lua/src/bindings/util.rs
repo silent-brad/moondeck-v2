@@ -178,17 +178,36 @@ fn format_value(spec: &str, value: &Value) -> String {
         _ => 0.0,
     };
 
-    // Parse precision from spec like "%.2f" or "%.0f"
+    // Parse width for zero-padding (e.g., %02d, %03d)
+    let inner = &spec[1..spec.len() - 1]; // Remove % and format char
+    let zero_pad = inner.starts_with('0');
+    let width: usize = inner
+        .trim_start_matches('0')
+        .trim_start_matches('-')
+        .trim_start_matches('+')
+        .split('.')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
     if spec.ends_with('f') {
-        if let Some(dot_pos) = spec.find('.') {
-            let prec_str = &spec[dot_pos + 1..spec.len() - 1];
+        // Float formatting
+        if let Some(dot_pos) = inner.find('.') {
+            let prec_str = &inner[dot_pos + 1..];
             if let Ok(precision) = prec_str.parse::<usize>() {
                 return format!("{:.prec$}", num, prec = precision);
             }
         }
         return format!("{:.2}", num);
     } else if spec.ends_with('d') {
-        return format!("{}", num as i64);
+        // Integer formatting with optional zero-padding
+        let int_val = num as i64;
+        if zero_pad && width > 0 {
+            return format!("{:0>width$}", int_val, width = width);
+        } else if width > 0 {
+            return format!("{:>width$}", int_val, width = width);
+        }
+        return format!("{}", int_val);
     } else if spec.ends_with('s') {
         return format!("{}", num);
     }

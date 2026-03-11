@@ -1,80 +1,88 @@
 -- Bible Verse Widget
--- Fetches Verse of the Day from labs.bible.org API
+-- Fetches random verses from bible-api.com
 
-local theme = require("theme")
 local components = require("components")
 
 local M = {}
 
--- Safe theme getter with fallback
-local function get_theme()
-	if theme and theme.get then
-		local result = theme:get()
-		if result then
-			return result
-		end
-	end
-	-- Fallback colors
-	return {
-		text_primary = "#ffffff",
-		text_secondary = "#a0a0b0",
-		text_muted = "#606070",
-		text_accent = "#00d4ff",
-		accent_primary = "#00d4ff",
-		accent_secondary = "#e94560",
-		accent_success = "#00ff88",
-		accent_warning = "#ffaa00",
-		accent_error = "#ff4466",
-		bg_tertiary = "#1a1a2e",
-		border_primary = "#2a2a3e",
-	}
-end
-
 function M.init(ctx)
+	local fetch_interval = ctx.opts.update_interval or 3600000 -- 1 hour
+	local translation = ctx.opts.translation or "kjv" -- KJV default
+
 	return {
 		x = ctx.x,
 		y = ctx.y,
 		width = ctx.width,
 		height = ctx.height,
+		translation = translation,
 		verse_text = nil,
 		verse_ref = nil,
-		last_fetch = 0,
-		fetch_interval = ctx.opts.update_interval or 3600000, -- 1 hour
+		last_fetch = fetch_interval, -- Trigger immediate fetch
+		fetch_interval = fetch_interval,
 		loading = true,
 		error = nil,
 	}
 end
 
 function M.update(state, delta_ms)
-	-- Only do simple arithmetic - no stdlib calls work in piccolo across try_enter
 	state.last_fetch = state.last_fetch + delta_ms
-end
 
--- Word wrap helper
-local function wrap_text(text, max_chars)
-	local lines = {}
-	local line = ""
+	if state.last_fetch >= state.fetch_interval then
+		state.last_fetch = 0
 
-	for word in string_gmatch(text, "%S+") do
-		if #line + #word + 1 <= max_chars then
-			line = line == "" and word or line .. " " .. word
-		else
-			if line ~= "" then
-				table_insert(lines, line)
+		-- Fetch random verse from bible-api.com
+		local url = "https://bible-api.com/data/" .. state.translation .. "/random"
+
+		local response = net.http_get(url, {}, 10000)
+
+		if response and response.ok and response.body then
+			local data = net.json_decode(response.body)
+
+			if data and data.random_verse then
+				local verse = data.random_verse
+
+				-- Clean up text (remove leading/trailing whitespace)
+				local text = verse.text or ""
+				-- Simple trim: remove leading/trailing newlines
+				local clean_text = ""
+				local started = false
+				for i = 1, #text do
+					local c = string.sub(text, i, i)
+					if c ~= "\n" and c ~= "\r" then
+						started = true
+					end
+					if started then
+						clean_text = clean_text .. c
+					end
+				end
+				-- Trim trailing
+				while
+					#clean_text > 0
+					and (
+						string.sub(clean_text, #clean_text, #clean_text) == "\n"
+						or string.sub(clean_text, #clean_text, #clean_text) == "\r"
+					)
+				do
+					clean_text = string.sub(clean_text, 1, #clean_text - 1)
+				end
+
+				state.verse_text = clean_text
+				state.verse_ref = verse.book .. " " .. verse.chapter .. ":" .. verse.verse
+				state.loading = false
+				state.error = nil
+			else
+				state.error = "No verse data"
+				state.loading = false
 			end
-			line = word
+		else
+			state.error = "Failed to fetch"
+			state.loading = false
 		end
 	end
-
-	if line ~= "" then
-		table_insert(lines, line)
-	end
-
-	return lines
 end
 
 function M.render(state, gfx)
-	local th = get_theme()
+	local th = theme:get()
 	local px, py = 20, 15
 
 	-- Draw card
@@ -85,7 +93,7 @@ function M.render(state, gfx)
 	gfx:line(px, py + 10, px + 10, py + 10, th.accent_primary, 2)
 
 	-- Title
-	gfx:text(px + 20, py + 5, "Verse of the Day", th.text_muted, "small")
+	gfx:text(px + 20, py + 5, "Daily Verse", th.text_muted, "small")
 
 	local content_y = py + 35
 
@@ -101,21 +109,21 @@ function M.render(state, gfx)
 
 	if state.verse_text then
 		-- Calculate characters per line based on width
-		local chars_per_line = math_floor((state.width - px * 2) / 7)
-		local lines = wrap_text(state.verse_text, chars_per_line)
+		local chars_per_line = math.floor((state.width - px * 2) / 7)
+		local lines = util.word_wrap(state.verse_text, chars_per_line)
 
 		-- Calculate how many lines we can show
 		local line_height = 18
-		local max_lines = math_floor((state.height - content_y - 40) / line_height)
+		local max_lines = math.floor((state.height - content_y - 40) / line_height)
 
 		-- Draw verse text
-		for i, line in ipairs(lines) do
+		for i = 1, #lines do
 			if i > max_lines then
 				-- Show ellipsis on last line
 				gfx:text(px, content_y + (max_lines - 1) * line_height, "...", th.text_secondary, "medium")
 				break
 			end
-			gfx:text(px, content_y + (i - 1) * line_height, line, th.text_secondary, "medium")
+			gfx:text(px, content_y + (i - 1) * line_height, lines[i], th.text_secondary, "medium")
 		end
 
 		-- Draw reference at bottom

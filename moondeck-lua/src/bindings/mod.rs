@@ -9,7 +9,7 @@ use anyhow::Result;
 use moondeck_hal::EnvConfig;
 use piccolo::Lua;
 
-pub use device::{init_boot_time, register_device, set_system_info, set_wifi_status};
+pub use device::{init_boot_time, register_device, set_system_info, set_timezone_offset, set_wifi_status};
 pub use env::register_env;
 pub use gfx::{get_draw_commands, get_draw_offset, register_gfx, set_draw_offset, DrawCommand, LuaDrawCommands};
 pub use net::register_net;

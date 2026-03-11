@@ -145,6 +145,7 @@ function M.render(state, gfx)
 
 	content_y = content_y + row_height + 25
 
+	--[[
 	-- Divider
 	components.divider(gfx, px, content_y, state.width - px * 2, { color = th.border_primary })
 
@@ -158,6 +159,7 @@ function M.render(state, gfx)
 	local status_y = content_y
 	components.status(gfx, px + col_width, status_y, "WiFi Connected", "ok")
 	components.status(gfx, px + col_width, status_y + 18, "Display Active", "ok")
+  --]]
 end
 
 function M.on_event(state, event)

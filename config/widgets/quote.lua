@@ -111,7 +111,7 @@ function M.render(state, gfx)
 	end
 
 	-- Subtle accent line
-	gfx:line(px, state.height - py - 35, px + 3, state.height - py - 35, th.accent_primary, 2)
+	gfx:line(px, state.height - py - 35, state.width - px, state.height - py - 35, th.accent_primary, 2)
 end
 
 function M.on_event(state, event)

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use piccolo::{Callback, CallbackReturn, Lua, Table};
+use piccolo::{Callback, CallbackReturn, Lua, Table, Value};
 use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,6 +13,14 @@ static WIFI_RSSI: RwLock<i32> = RwLock::new(-100);
 static FREE_HEAP: RwLock<u32> = RwLock::new(0);
 static CPU_FREQ: RwLock<u32> = RwLock::new(240);
 static BOOT_TIME: RwLock<u64> = RwLock::new(0);
+
+// Timezone offset in seconds from UTC (e.g., -18000 for EST, -14400 for EDT)
+static TZ_OFFSET: RwLock<i64> = RwLock::new(0);
+
+/// Set timezone offset in seconds from UTC
+pub fn set_timezone_offset(offset_seconds: i64) {
+    *TZ_OFFSET.write().unwrap() = offset_seconds;
+}
 
 /// Update WiFi state from the main application
 pub fn set_wifi_status(connected: bool, ssid: &str, ip: &str, rssi: i32) {
@@ -164,9 +172,143 @@ pub fn register_device(lua: &mut Lua) -> Result<()> {
             }),
         )?;
 
+        // device.localtime() -> table { hour, min, sec, year, month, day, weekday, yearday }
+        device_table.set(
+            ctx,
+            "localtime",
+            Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
+                let unix_secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+
+                let tz_offset = *TZ_OFFSET.read().unwrap();
+                let local_secs = unix_secs + tz_offset;
+
+                // Calculate date/time components
+                let (year, month, day, yearday) = unix_to_date(local_secs);
+                let weekday = weekday_from_unix(local_secs);
+
+                let day_secs = local_secs.rem_euclid(86400);
+                let hour = (day_secs / 3600) as i64;
+                let min = ((day_secs % 3600) / 60) as i64;
+                let sec = (day_secs % 60) as i64;
+
+                let result = Table::new(&ctx);
+                result.set(ctx, "hour", hour)?;
+                result.set(ctx, "min", min)?;
+                result.set(ctx, "sec", sec)?;
+                result.set(ctx, "year", year)?;
+                result.set(ctx, "month", month)?;
+                result.set(ctx, "day", day)?;
+                result.set(ctx, "weekday", weekday)?;  // 1=Sunday, 7=Saturday
+                result.set(ctx, "yearday", yearday)?;
+
+                stack.replace(ctx, result);
+                Ok(CallbackReturn::Return)
+            }),
+        )?;
+
+        // device.set_timezone(offset_hours) -> sets timezone offset
+        device_table.set(
+            ctx,
+            "set_timezone",
+            Callback::from_fn(&ctx, |_ctx, _exec, mut stack| {
+                let (arg1, arg2): (Value, Value) = stack.consume(_ctx)?;
+                let offset_hours = match arg1 {
+                    Value::Table(_) => arg2,
+                    _ => arg1,
+                };
+                let offset = match offset_hours {
+                    Value::Integer(h) => h * 3600,
+                    Value::Number(h) => (h * 3600.0) as i64,
+                    _ => 0,
+                };
+                *TZ_OFFSET.write().unwrap() = offset;
+                Ok(CallbackReturn::Return)
+            }),
+        )?;
+
         ctx.set_global("device", device_table)?;
         Ok(())
     })?;
 
     Ok(())
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+fn days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        1 => 31,
+        2 => if is_leap_year(year) { 29 } else { 28 },
+        3 => 31,
+        4 => 30,
+        5 => 31,
+        6 => 30,
+        7 => 31,
+        8 => 31,
+        9 => 30,
+        10 => 31,
+        11 => 30,
+        12 => 31,
+        _ => 30,
+    }
+}
+
+// Calculate year, month, day, and day of year from unix timestamp (in local seconds)
+fn unix_to_date(local_secs: i64) -> (i64, i64, i64, i64) {
+    // Total days since Unix epoch
+    let total_days = local_secs.div_euclid(86400);
+
+    // Start from 1970
+    let mut year = 1970i64;
+    let mut remaining = total_days;
+
+    // Handle negative days (before 1970)
+    while remaining < 0 {
+        year -= 1;
+        remaining += if is_leap_year(year) { 366 } else { 365 };
+    }
+
+    // Count forward through years
+    loop {
+        let days_this_year = if is_leap_year(year) { 366 } else { 365 };
+        if remaining < days_this_year {
+            break;
+        }
+        remaining -= days_this_year;
+        year += 1;
+    }
+
+    let yearday = remaining + 1; // 1-indexed day of year
+
+    // Find month and day
+    let mut month = 1i64;
+    let mut day_of_month = remaining;
+
+    while month <= 12 {
+        let dim = days_in_month(year, month);
+        if day_of_month < dim {
+            break;
+        }
+        day_of_month -= dim;
+        month += 1;
+    }
+
+    // day_of_month is 0-indexed, convert to 1-indexed
+    let day = day_of_month + 1;
+
+    (year, month, day, yearday)
+}
+
+// Calculate weekday from unix timestamp (1=Sunday, 7=Saturday)
+fn weekday_from_unix(local_secs: i64) -> i64 {
+    let days = local_secs.div_euclid(86400);
+    // Jan 1, 1970 was Thursday
+    // Thursday = 5 in 1=Sunday system
+    // So days=0 should give weekday=5
+    ((days + 4).rem_euclid(7) + 1) as i64
 }

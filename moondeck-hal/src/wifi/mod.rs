@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use esp_idf_svc::sntp::{EspSntp, SntpConf, SyncStatus};
 use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
 use esp_idf_hal::modem::Modem;
 use std::net::Ipv4Addr;
+use std::time::Duration;
 
 pub struct WifiStatus {
     pub connected: bool,
@@ -15,6 +17,7 @@ pub struct WifiStatus {
 pub struct WifiManager<'d> {
     wifi: BlockingWifi<EspWifi<'d>>,
     ssid: String,
+    _sntp: Option<EspSntp<'static>>,
 }
 
 impl<'d> WifiManager<'d> {
@@ -32,6 +35,7 @@ impl<'d> WifiManager<'d> {
         Ok(Self {
             wifi: blocking_wifi,
             ssid: String::new(),
+            _sntp: None,
         })
     }
 
@@ -72,7 +76,41 @@ impl<'d> WifiManager<'d> {
 
         log::info!("WiFi connected! IP: {}", ip_info.ip);
 
+        // Initialize SNTP for time synchronization
+        self.init_sntp();
+
         Ok(())
+    }
+
+    fn init_sntp(&mut self) {
+        log::info!("Initializing SNTP time sync...");
+
+        let sntp_conf = SntpConf {
+            servers: ["pool.ntp.org"],
+            ..Default::default()
+        };
+
+        match EspSntp::new(&sntp_conf) {
+            Ok(sntp) => {
+                // Wait for time sync (up to 10 seconds)
+                let mut attempts = 0;
+                while sntp.get_sync_status() != SyncStatus::Completed && attempts < 100 {
+                    std::thread::sleep(Duration::from_millis(100));
+                    attempts += 1;
+                }
+
+                if sntp.get_sync_status() == SyncStatus::Completed {
+                    log::info!("SNTP time synchronized successfully");
+                } else {
+                    log::warn!("SNTP sync timeout, time may be incorrect");
+                }
+
+                self._sntp = Some(sntp);
+            }
+            Err(e) => {
+                log::warn!("Failed to initialize SNTP: {:?}", e);
+            }
+        }
     }
 
     pub fn disconnect(&mut self) -> Result<()> {
