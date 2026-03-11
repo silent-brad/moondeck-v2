@@ -1,14 +1,13 @@
-use crate::bindings::{get_draw_commands, set_draw_offset, DrawCommand};
+use crate::bindings::{get_draw_commands, lua_serde::json_to_lua, set_draw_offset, DrawCommand};
 use crate::LuaRuntime;
 use anyhow::{Context, Result};
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::DrawTarget;
-use moondeck_core::gfx::{DrawContext};
+use moondeck_core::gfx::DrawContext;
 use moondeck_core::ui::{Event, Gesture, WidgetContext};
 use moondeck_core::TtfFont;
 use piccolo::{Closure, Executor, Fuel, StashedTable, Table, Value};
 
-// Auto-generated from config/widgets/*.lua by build.rs
 include!(concat!(env!("OUT_DIR"), "/embedded_widgets.rs"));
 
 pub struct WidgetPlugin {
@@ -20,153 +19,43 @@ pub struct WidgetPlugin {
 
 impl WidgetPlugin {
     pub fn new(module: &str, _instance_id: usize) -> Self {
-        Self {
-            module: module.to_string(),
-            module_table: None,
-            widget_state: None,
-            initialized: false,
-        }
+        Self { module: module.to_string(), module_table: None, widget_state: None, initialized: false }
     }
 
-    fn get_widget_source(&self) -> Option<&'static str> {
-        EMBEDDED_WIDGETS
-            .iter()
-            .find(|(name, _)| *name == self.module)
-            .map(|(_, src)| *src)
+    fn get_source(&self) -> Option<&'static str> {
+        EMBEDDED_WIDGETS.iter().find(|(n, _)| *n == self.module).map(|(_, s)| *s)
     }
 
     pub fn init(&mut self, runtime: &mut LuaRuntime, ctx: &WidgetContext) -> Result<()> {
-        let source = match self.get_widget_source() {
+        let source = match self.get_source() {
             Some(s) => s,
-            None => {
-                log::warn!("Widget module not found: {}", self.module);
-                self.initialized = true;
-                return Ok(());
-            }
+            None => { log::warn!("Widget not found: {}", self.module); self.initialized = true; return Ok(()); }
         };
 
         let lua = runtime.lua();
+        let module_name = self.module.clone();
 
-        // Load the widget module
         let (module_table, widget_state) = lua.try_enter(|lctx| {
-            // Load and execute the widget Lua file
-            let closure = Closure::load(lctx, Some(self.module.as_str()), source.as_bytes())?;
+            // Load module
+            let closure = Closure::load(lctx, Some(&module_name), source.as_bytes())?;
+            let exec = run_executor(lctx, Executor::start(lctx, closure.into(), ()), &module_name, "load")?;
 
-            let executor = Executor::start(lctx, closure.into(), ());
-            let stashed = lctx.stash(executor);
-
-            // Run to get the module table
-            let mut fuel = Fuel::with(100000);
-            let exec = lctx.fetch(&stashed);
-            while !exec.step(lctx, &mut fuel) {
-                if fuel.remaining() <= 0 {
-                    log::warn!("Widget {} ran out of fuel", self.module);
-                    break;
-                }
-            }
-
-            let result = exec.take_result::<Value>(lctx)?;
-
-            let module = match result {
-                Ok(Value::Table(t)) => {
-                    log::debug!("Widget {} module loaded successfully", self.module);
-                    t
-                }
-                Ok(other) => {
-                    log::warn!("Widget {} returned {:?} instead of table", self.module, other);
-                    return Ok((None, None));
-                }
-                Err(e) => {
-                    log::error!("Widget {} load error (likely require/stdlib issue): {:?}", self.module, e);
-                    return Ok((None, None));
-                }
+            let module = match exec.take_result::<Value>(lctx)? {
+                Ok(Value::Table(t)) => t,
+                Ok(_) | Err(_) => return Ok((None, None)),
             };
 
-            // Call init function if it exists
-            let init_fn = module.get(lctx, "init");
-            let state = if let Value::Function(f) = init_fn {
-                // Create context table for init
-                let ctx_table = Table::new(&lctx);
-                ctx_table.set(lctx, "x", ctx.x as i64)?;
-                ctx_table.set(lctx, "y", ctx.y as i64)?;
-                ctx_table.set(lctx, "width", ctx.width as i64)?;
-                ctx_table.set(lctx, "height", ctx.height as i64)?;
-
-                // Create opts table - intern keys to avoid lifetime issues
-                let opts_table = Table::new(&lctx);
-                let opts_clone: Vec<_> = ctx.opts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                for (key, value) in opts_clone {
-                    let key_str = lctx.intern(key.as_bytes());
-                    match value {
-                        serde_json::Value::Bool(b) => { opts_table.set(lctx, key_str, b)?; }
-                        serde_json::Value::Number(n) => {
-                            if let Some(i) = n.as_i64() {
-                                opts_table.set(lctx, key_str, i)?;
-                            } else if let Some(f) = n.as_f64() {
-                                opts_table.set(lctx, key_str, f)?;
-                            }
-                        }
-                        serde_json::Value::String(s) => { opts_table.set(lctx, key_str, lctx.intern(s.as_bytes()))?; }
-                        serde_json::Value::Array(arr) => {
-                            let arr_table = Table::new(&lctx);
-                            for (i, item) in arr.iter().enumerate() {
-                                match item {
-                                    serde_json::Value::String(s) => {
-                                        arr_table.set(lctx, (i + 1) as i64, lctx.intern(s.as_bytes()))?;
-                                    }
-                                    serde_json::Value::Number(n) => {
-                                        if let Some(i_val) = n.as_i64() {
-                                            arr_table.set(lctx, (i + 1) as i64, i_val)?;
-                                        } else if let Some(f_val) = n.as_f64() {
-                                            arr_table.set(lctx, (i + 1) as i64, f_val)?;
-                                        }
-                                    }
-                                    serde_json::Value::Bool(b) => {
-                                        arr_table.set(lctx, (i + 1) as i64, *b)?;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            opts_table.set(lctx, key_str, arr_table)?;
-                        }
-                        _ => {}
-                    }
+            // Call init if exists
+            let state = if let Value::Function(f) = module.get(lctx, "init") {
+                let ctx_table = build_context_table(lctx, ctx)?;
+                let exec = run_executor(lctx, Executor::start(lctx, f, (ctx_table,)), &module_name, "init")?;
+                match exec.take_result::<Value>(lctx)? {
+                    Ok(Value::Table(t)) => Some(lctx.stash(t)),
+                    _ => None,
                 }
-                ctx_table.set(lctx, "opts", opts_table)?;
+            } else { None };
 
-                // Call init(ctx)
-                let init_exec = Executor::start(lctx, f, (ctx_table,));
-                let init_stashed = lctx.stash(init_exec);
-                let mut fuel = Fuel::with(100000);
-                let exec = lctx.fetch(&init_stashed);
-                while !exec.step(lctx, &mut fuel) {
-                    if fuel.remaining() <= 0 {
-                        log::warn!("Widget {} init ran out of fuel", self.module);
-                        break;
-                    }
-                }
-                let init_result = exec.take_result::<Value>(lctx)?;
-
-                match init_result {
-                    Ok(Value::Table(t)) => {
-                        log::debug!("Widget {} init returned state table successfully", self.module);
-                        Some(lctx.stash(t))
-                    }
-                    Ok(other) => {
-                        log::warn!("Widget {} init returned {:?} instead of table", self.module, other);
-                        None
-                    }
-                    Err(e) => {
-                        log::error!("Widget {} init error: {:?}", self.module, e);
-                        None
-                    }
-                }
-            } else {
-                log::debug!("Widget {} has no init function", self.module);
-                None
-            };
-
-            log::info!("Widget {} loaded successfully", self.module);
+            log::info!("Widget {} loaded", module_name);
             Ok((Some(lctx.stash(module)), state))
         }).context("Failed to initialize widget")?;
 
@@ -177,98 +66,41 @@ impl WidgetPlugin {
     }
 
     pub fn update(&self, runtime: &mut LuaRuntime, delta_ms: u32) -> Result<()> {
-        let module_table = match &self.module_table {
-            Some(m) => m,
-            None => return Ok(()),
-        };
-
-        let lua = runtime.lua();
-        let widget_state = &self.widget_state;
+        let module_table = match &self.module_table { Some(m) => m, None => return Ok(()) };
         let module_name = &self.module;
-        Ok(lua.try_enter(|lctx| {
+        let widget_state = &self.widget_state;
+
+        runtime.lua().try_enter(|lctx| {
             let module = lctx.fetch(module_table);
-
-            let update_fn = module.get(lctx, "update");
-            if let Value::Function(f) = update_fn {
-                let state_val: Value = if let Some(ref state_stash) = widget_state {
-                    lctx.fetch(state_stash).into()
-                } else {
-                    log::warn!("Widget {} has no state, using empty table", module_name);
-                    Table::new(&lctx).into()
-                };
-
-                let exec = Executor::start(lctx, f, (state_val, delta_ms as i64));
-                let stashed = lctx.stash(exec);
-                let mut fuel = Fuel::with(100000);
-                let exec = lctx.fetch(&stashed);
-                while !exec.step(lctx, &mut fuel) {
-                    if fuel.remaining() <= 0 {
-                        log::warn!("Widget {} update ran out of fuel", module_name);
-                        break;
-                    }
-                }
-
+            if let Value::Function(f) = module.get(lctx, "update") {
+                let state = get_state_value(lctx, widget_state);
+                let exec = run_executor(lctx, Executor::start(lctx, f, (state, delta_ms as i64)), module_name, "update")?;
                 if let Ok(Err(e)) = exec.take_result::<Value>(lctx) {
                     log::error!("Widget {} update error: {:?}", module_name, e);
                 }
             }
             Ok(())
-        })?)
+        })?;
+        Ok(())
     }
 
     pub fn render<T: DrawTarget<Color = Rgb565>>(
-        &self,
-        runtime: &mut LuaRuntime,
-        ctx: &WidgetContext,
-        draw_ctx: &mut DrawContext<'_, T>,
+        &self, runtime: &mut LuaRuntime, ctx: &WidgetContext, draw_ctx: &mut DrawContext<'_, T>,
     ) -> Result<()> {
-        if !self.initialized {
-            return Ok(());
-        }
+        if !self.initialized { return Ok(()); }
+        let module_table = match &self.module_table { Some(m) => m, None => return Ok(()) };
 
-        // If no module loaded, show placeholder
-        let module_table = match &self.module_table {
-            Some(m) => m,
-            None => {
-                log::warn!("Widget {} not found", self.module);
-                return Ok(());
-            }
-        };
-
-        // Clear draw commands and set offset for relative positioning
         let draw_cmds = get_draw_commands();
         draw_cmds.clear_commands();
         set_draw_offset(ctx.x, ctx.y);
 
-        // Call the widget's render function
-        let lua = runtime.lua();
         let widget_state = &self.widget_state;
-        lua.try_enter(|lctx| {
+        runtime.lua().try_enter(|lctx| {
             let module = lctx.fetch(module_table);
-
-            let render_fn = module.get(lctx, "render");
-            if let Value::Function(f) = render_fn {
+            if let Value::Function(f) = module.get(lctx, "render") {
+                let state = get_state_value(lctx, widget_state);
                 let gfx = lctx.globals().get(lctx, "gfx");
-
-                // Pass state if available, otherwise pass an empty table
-                let state_val: Value = if let Some(ref state_stash) = widget_state {
-                    lctx.fetch(state_stash).into()
-                } else {
-                    Table::new(&lctx).into()
-                };
-
-                let exec = Executor::start(lctx, f, (state_val, gfx));
-                let stashed = lctx.stash(exec);
-                let mut fuel = Fuel::with(100000);
-                let exec = lctx.fetch(&stashed);
-                while !exec.step(lctx, &mut fuel) {
-                    if fuel.remaining() <= 0 {
-                        log::warn!("Widget {} render ran out of fuel", self.module);
-                        break;
-                    }
-                }
-
-                // Check for execution errors
+                let exec = run_executor(lctx, Executor::start(lctx, f, (state, gfx)), &self.module, "render")?;
                 if let Ok(Err(e)) = exec.take_result::<Value>(lctx) {
                     log::error!("Widget {} render error: {:?}", self.module, e);
                 }
@@ -276,113 +108,111 @@ impl WidgetPlugin {
             Ok(())
         })?;
 
-        // Execute the collected draw commands
-        let commands = draw_cmds.take_commands();
-        for cmd in commands {
-            match cmd {
-                DrawCommand::Clear { color } => {
-                    draw_ctx.fill_rect(ctx.x, ctx.y, ctx.width, ctx.height, color);
-                }
-                DrawCommand::FillRect { x, y, w, h, color } => {
-                    draw_ctx.fill_rect(x, y, w, h, color);
-                }
-                DrawCommand::StrokeRect { x, y, w, h, color, thickness } => {
-                    draw_ctx.stroke_rect(x, y, w, h, color, thickness);
-                }
-                DrawCommand::FillRoundedRect { x, y, w, h, radius, color } => {
-                    draw_ctx.fill_rounded_rect(x, y, w, h, radius, color);
-                }
-                DrawCommand::StrokeRoundedRect { x, y, w, h, radius, color, thickness } => {
-                    draw_ctx.stroke_rounded_rect(x, y, w, h, radius, color, thickness);
-                }
-                DrawCommand::FillCircle { cx, cy, radius, color } => {
-                    draw_ctx.fill_circle(cx, cy, radius, color);
-                }
-                DrawCommand::StrokeCircle { cx, cy, radius, color, thickness } => {
-                    draw_ctx.stroke_circle(cx, cy, radius, color, thickness);
-                }
-                DrawCommand::Line { x1, y1, x2, y2, color, thickness } => {
-                    draw_ctx.line(x1, y1, x2, y2, color, thickness);
-                }
-                DrawCommand::Text { x, y, text, color, font } => {
-                    use moondeck_core::gfx::Font;
-                    let ttf_font = match font {
-                        Font::Small => TtfFont::inter(12),
-                        Font::Medium => TtfFont::inter(16),
-                        Font::Large => TtfFont::inter(24),
-                        Font::XLarge => TtfFont::inter(32),
-                    };
-                    draw_ctx.text_ttf(x, y, &text, color, ttf_font);
-                }
-            }
-        }
-
+        execute_draw_commands(draw_cmds.take_commands(), ctx, draw_ctx);
         Ok(())
     }
 
     pub fn on_event(&self, runtime: &mut LuaRuntime, event: &Event) -> Result<bool> {
-        let module_table = match &self.module_table {
-            Some(m) => m,
-            None => return Ok(false),
-        };
-
-        let lua = runtime.lua();
+        let module_table = match &self.module_table { Some(m) => m, None => return Ok(false) };
         let widget_state = &self.widget_state;
-        Ok(lua.try_enter(|lctx| {
+
+        Ok(runtime.lua().try_enter(|lctx| {
             let module = lctx.fetch(module_table);
-
-            let event_fn = module.get(lctx, "on_event");
-            if let Value::Function(f) = event_fn {
-                let state_val: Value = if let Some(ref state_stash) = widget_state {
-                    lctx.fetch(state_stash).into()
-                } else {
-                    Table::new(&lctx).into()
-                };
-
-                let event_table = Table::new(&lctx);
-                match event {
-                    Event::Gesture(Gesture::Tap { x, y }) => {
-                        event_table.set(lctx, "type", "tap")?;
-                        event_table.set(lctx, "x", *x as i64)?;
-                        event_table.set(lctx, "y", *y as i64)?;
-                    }
-                    Event::Gesture(Gesture::SwipeLeft) => {
-                        event_table.set(lctx, "type", "swipe")?;
-                        event_table.set(lctx, "direction", "left")?;
-                    }
-                    Event::Gesture(Gesture::SwipeRight) => {
-                        event_table.set(lctx, "type", "swipe")?;
-                        event_table.set(lctx, "direction", "right")?;
-                    }
-                    Event::Gesture(Gesture::SwipeUp) => {
-                        event_table.set(lctx, "type", "swipe")?;
-                        event_table.set(lctx, "direction", "up")?;
-                    }
-                    Event::Gesture(Gesture::SwipeDown) => {
-                        event_table.set(lctx, "type", "swipe")?;
-                        event_table.set(lctx, "direction", "down")?;
-                    }
-                    _ => {
-                        event_table.set(lctx, "type", "unknown")?;
-                    }
-                }
-
-                let exec = Executor::start(lctx, f, (state_val, event_table));
-                let stashed = lctx.stash(exec);
-                let mut fuel = Fuel::with(100000);
-                let exec = lctx.fetch(&stashed);
-                while !exec.step(lctx, &mut fuel) {
-                    if fuel.remaining() <= 0 {
-                        break;
-                    }
-                }
-
-                let result = exec.take_result::<Value>(lctx);
-                if let Ok(Ok(Value::Boolean(b))) = result {
+            if let Value::Function(f) = module.get(lctx, "on_event") {
+                let state = get_state_value(lctx, widget_state);
+                let event_table = build_event_table(lctx, event)?;
+                let exec = run_executor(lctx, Executor::start(lctx, f, (state, event_table)), &self.module, "on_event")?;
+                if let Ok(Ok(Value::Boolean(b))) = exec.take_result::<Value>(lctx) {
                     return Ok(b);
                 }
             }
             Ok(false)
         })?)
+    }
+}
+
+// Helper to run executor with fuel
+fn run_executor<'gc>(
+    ctx: piccolo::Context<'gc>, executor: Executor<'gc>, module: &str, method: &str,
+) -> Result<Executor<'gc>, anyhow::Error> {
+    let stashed = ctx.stash(executor);
+    let mut fuel = Fuel::with(100000);
+    let exec = ctx.fetch(&stashed);
+    while !exec.step(ctx, &mut fuel) {
+        if fuel.remaining() <= 0 {
+            log::warn!("Widget {} {} ran out of fuel", module, method);
+            break;
+        }
+    }
+    Ok(exec)
+}
+
+fn get_state_value<'gc>(ctx: piccolo::Context<'gc>, state: &Option<StashedTable>) -> Value<'gc> {
+    state.as_ref().map(|s| ctx.fetch(s).into()).unwrap_or_else(|| Table::new(&ctx).into())
+}
+
+fn build_context_table<'gc>(ctx: piccolo::Context<'gc>, wctx: &WidgetContext) -> Result<Table<'gc>, piccolo::Error<'gc>> {
+    let t = Table::new(&ctx);
+    t.set(ctx, "x", wctx.x as i64)?;
+    t.set(ctx, "y", wctx.y as i64)?;
+    t.set(ctx, "width", wctx.width as i64)?;
+    t.set(ctx, "height", wctx.height as i64)?;
+
+    let opts = Table::new(&ctx);
+    for (key, value) in &wctx.opts {
+        let k = ctx.intern(key.as_bytes());
+        opts.set(ctx, k, json_to_lua(ctx, value))?;
+    }
+    t.set(ctx, "opts", opts)?;
+    Ok(t)
+}
+
+fn build_event_table<'gc>(ctx: piccolo::Context<'gc>, event: &Event) -> Result<Table<'gc>, piccolo::Error<'gc>> {
+    let t = Table::new(&ctx);
+    match event {
+        Event::Gesture(Gesture::Tap { x, y }) => {
+            t.set(ctx, "type", "tap")?;
+            t.set(ctx, "x", *x as i64)?;
+            t.set(ctx, "y", *y as i64)?;
+        }
+        Event::Gesture(g) => {
+            t.set(ctx, "type", "swipe")?;
+            t.set(ctx, "direction", match g {
+                Gesture::SwipeLeft => "left",
+                Gesture::SwipeRight => "right",
+                Gesture::SwipeUp => "up",
+                Gesture::SwipeDown => "down",
+                _ => "unknown",
+            })?;
+        }
+        _ => { t.set(ctx, "type", "unknown")?; }
+    }
+    Ok(t)
+}
+
+fn execute_draw_commands<T: DrawTarget<Color = Rgb565>>(
+    commands: Vec<DrawCommand>, ctx: &WidgetContext, draw_ctx: &mut DrawContext<'_, T>,
+) {
+    use moondeck_core::gfx::Font;
+    for cmd in commands {
+        match cmd {
+            DrawCommand::Clear { color } => draw_ctx.fill_rect(ctx.x, ctx.y, ctx.width, ctx.height, color),
+            DrawCommand::FillRect { x, y, w, h, color } => draw_ctx.fill_rect(x, y, w, h, color),
+            DrawCommand::StrokeRect { x, y, w, h, color, thickness } => draw_ctx.stroke_rect(x, y, w, h, color, thickness),
+            DrawCommand::FillRoundedRect { x, y, w, h, radius, color } => draw_ctx.fill_rounded_rect(x, y, w, h, radius, color),
+            DrawCommand::StrokeRoundedRect { x, y, w, h, radius, color, thickness } => draw_ctx.stroke_rounded_rect(x, y, w, h, radius, color, thickness),
+            DrawCommand::FillCircle { cx, cy, radius, color } => draw_ctx.fill_circle(cx, cy, radius, color),
+            DrawCommand::StrokeCircle { cx, cy, radius, color, thickness } => draw_ctx.stroke_circle(cx, cy, radius, color, thickness),
+            DrawCommand::Line { x1, y1, x2, y2, color, thickness } => draw_ctx.line(x1, y1, x2, y2, color, thickness),
+            DrawCommand::Text { x, y, text, color, font } => {
+                let ttf = match font {
+                    Font::Small => TtfFont::inter(12),
+                    Font::Medium => TtfFont::inter(16),
+                    Font::Large => TtfFont::inter(24),
+                    Font::XLarge => TtfFont::inter(32),
+                };
+                draw_ctx.text_ttf(x, y, &text, color, ttf);
+            }
+        }
     }
 }

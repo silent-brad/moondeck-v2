@@ -11,11 +11,6 @@
 
 ** DONE Revise flake to be cleaner
 
-
-* TODO
-
-** TODO Add more widgets
-
 *** DONE Sysinfo
 *** DONE Weather
 *** DONE Quote
@@ -26,6 +21,15 @@
 *** DONE Status
 *** DONE Clock
 
+** DONE Reduce LOC/dependencies
+  Use macros/etc
+  NOTE: Reduced rust code by 24%
+
+
+* TODO
+
+** TODO Add more widgets
+  Add GitHub heatmap
 
 ** TODO Handle layouts card/component sizing
   Make more compact?
@@ -35,9 +39,6 @@
 ** TODO Revise design
 
 ** TODO Revise/simplify moondeck-lua/config structure
-
-** TODO Reduce LOC/dependencies
-  Use macros?
 
 ** TODO Test on MacOS
 
