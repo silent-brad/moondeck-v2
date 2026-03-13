@@ -6,12 +6,9 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Debug)]
 pub enum DrawCommand {
     Clear { color: Color },
-    FillRect { x: i32, y: i32, w: u32, h: u32, color: Color },
-    StrokeRect { x: i32, y: i32, w: u32, h: u32, color: Color, thickness: u32 },
     FillRoundedRect { x: i32, y: i32, w: u32, h: u32, radius: u32, color: Color },
     StrokeRoundedRect { x: i32, y: i32, w: u32, h: u32, radius: u32, color: Color, thickness: u32 },
     FillCircle { cx: i32, cy: i32, radius: u32, color: Color },
-    StrokeCircle { cx: i32, cy: i32, radius: u32, color: Color, thickness: u32 },
     Line { x1: i32, y1: i32, x2: i32, y2: i32, color: Color, thickness: u32 },
     Text { x: i32, y: i32, text: String, color: Color, font: Font },
 }
@@ -129,14 +126,6 @@ pub fn register_gfx(lua: &mut Lua) -> Result<()> {
         let gfx = Table::new(&ctx);
 
         // Rectangle commands
-        gfx_draw!(gfx, ctx, "fill_rect", (x, y, w, h, c) => |ox, oy| DrawCommand::FillRect {
-            x: i32(x) + ox, y: i32(y) + oy, w: u32(w), h: u32(h), color: color(c)
-        });
-
-        gfx_draw!(gfx, ctx, "stroke_rect", (x, y, w, h, c, t) => |ox, oy| DrawCommand::StrokeRect {
-            x: i32(x) + ox, y: i32(y) + oy, w: u32(w), h: u32(h), color: color(c), thickness: u32(t)
-        });
-
         gfx_draw!(gfx, ctx, "fill_rounded_rect", (x, y, w, h, r, c) => |ox, oy| DrawCommand::FillRoundedRect {
             x: i32(x) + ox, y: i32(y) + oy, w: u32(w), h: u32(h), radius: u32(r), color: color(c)
         });
@@ -146,16 +135,8 @@ pub fn register_gfx(lua: &mut Lua) -> Result<()> {
         });
 
         // Circle commands
-        gfx_draw!(gfx, ctx, "circle", (a, b, r, c) => |ox, oy| DrawCommand::FillCircle {
-            cx: i32(a) + ox, cy: i32(b) + oy, radius: u32(r), color: color(c)
-        });
-
         gfx_draw!(gfx, ctx, "fill_circle", (a, b, r, c) => |ox, oy| DrawCommand::FillCircle {
             cx: i32(a) + ox, cy: i32(b) + oy, radius: u32(r), color: color(c)
-        });
-
-        gfx_draw!(gfx, ctx, "stroke_circle", (a, b, r, c, t) => |ox, oy| DrawCommand::StrokeCircle {
-            cx: i32(a) + ox, cy: i32(b) + oy, radius: u32(r), color: color(c), thickness: u32(t)
         });
 
         // Line command

@@ -197,12 +197,9 @@ fn execute_draw_commands<T: DrawTarget<Color = Rgb565>>(
     for cmd in commands {
         match cmd {
             DrawCommand::Clear { color } => draw_ctx.fill_rect(ctx.x, ctx.y, ctx.width, ctx.height, color),
-            DrawCommand::FillRect { x, y, w, h, color } => draw_ctx.fill_rect(x, y, w, h, color),
-            DrawCommand::StrokeRect { x, y, w, h, color, thickness } => draw_ctx.stroke_rect(x, y, w, h, color, thickness),
             DrawCommand::FillRoundedRect { x, y, w, h, radius, color } => draw_ctx.fill_rounded_rect(x, y, w, h, radius, color),
             DrawCommand::StrokeRoundedRect { x, y, w, h, radius, color, thickness } => draw_ctx.stroke_rounded_rect(x, y, w, h, radius, color, thickness),
             DrawCommand::FillCircle { cx, cy, radius, color } => draw_ctx.fill_circle(cx, cy, radius, color),
-            DrawCommand::StrokeCircle { cx, cy, radius, color, thickness } => draw_ctx.stroke_circle(cx, cy, radius, color, thickness),
             DrawCommand::Line { x1, y1, x2, y2, color, thickness } => draw_ctx.line(x1, y1, x2, y2, color, thickness),
             DrawCommand::Text { x, y, text, color, font } => {
                 let ttf = match font {
