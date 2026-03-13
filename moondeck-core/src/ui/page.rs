@@ -26,10 +26,6 @@ impl Page {
 pub struct PageManager {
     pages: Vec<Page>,
     current_index: usize,
-    #[allow(dead_code)]
-    transition_progress: f32,
-    #[allow(dead_code)]
-    transitioning_to: Option<usize>,
 }
 
 impl PageManager {
@@ -37,8 +33,6 @@ impl PageManager {
         Self {
             pages: Vec::new(),
             current_index: 0,
-            transition_progress: 0.0,
-            transitioning_to: None,
         }
     }
 

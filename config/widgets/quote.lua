@@ -4,6 +4,9 @@ local M = {}
 
 -- Built-in quotes collection
 local builtin_quotes = {
+	{ text = "An unexamined life is not worth living.", author = "Socrates" },
+	{ text = "Simplicity is the ultimate sophistication.", author = "Leonardo da Vinci" },
+	{ text = "The only true wisdom is in knowing you know nothing.", author = "Socrates" },
 	{ text = "The only way to do great work is to love what you do.", author = "Steve Jobs" },
 	{ text = "Innovation distinguishes between a leader and a follower.", author = "Steve Jobs" },
 	{ text = "Stay hungry, stay foolish.", author = "Steve Jobs" },
@@ -13,9 +16,6 @@ local builtin_quotes = {
 		text = "Many of life's failures are people who did not realize how close they were to success when they gave up.",
 		author = "Thomas Edison",
 	},
-	{ text = "An unexamined life is not worth living.", author = "Socrates" },
-	{ text = "Simplicity is the ultimate sophistication.", author = "Leonardo da Vinci" },
-	{ text = "The only true wisdom is in knowing you know nothing.", author = "Socrates" },
 	{ text = "Do what you can, with what you have, where you are.", author = "Theodore Roosevelt" },
 	{ text = "Everything you've ever wanted is on the other side of fear.", author = "George Addair" },
 }
