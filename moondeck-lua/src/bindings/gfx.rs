@@ -1,6 +1,6 @@
 use anyhow::Result;
 use moondeck_core::gfx::{Color, Font};
-use piccolo::{Lua, Table, Value};
+use crate::vm::{LuaTable, Value, VmState};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
@@ -52,26 +52,29 @@ impl LuaDrawCommands {
 }
 
 // Value conversion helpers
-fn i32(val: Value) -> i32 {
+fn val_i32(val: &Value) -> i32 {
     match val {
-        Value::Integer(i) => i as i32,
-        Value::Number(n) => n as i32,
+        Value::Int(i) => *i as i32,
+        Value::Num(n) => *n as i32,
         _ => 0,
     }
 }
 
-fn u32(val: Value) -> u32 {
+fn val_u32(val: &Value) -> u32 {
     match val {
-        Value::Integer(i) => i.max(0) as u32,
-        Value::Number(n) => n.max(0.0) as u32,
+        Value::Int(i) => (*i).max(0) as u32,
+        Value::Num(n) => n.max(0.0) as u32,
         _ => 0,
     }
 }
 
-fn color(val: Value) -> Color {
+fn color(vm: &VmState, val: &Value) -> Color {
     match val {
-        Value::String(s) => Color::from_hex(s.to_str().unwrap_or("#FFFFFF")).unwrap(),
-        Value::Integer(i) => Color::new(
+        Value::Str(s) => {
+            let s = s.as_str(&vm.symbols);
+            Color::from_hex(&s).unwrap()
+        }
+        Value::Int(i) => Color::new(
             ((i >> 16) & 0xFF) as u8,
             ((i >> 8) & 0xFF) as u8,
             (i & 0xFF) as u8,
@@ -80,9 +83,9 @@ fn color(val: Value) -> Color {
     }
 }
 
-fn font(val: Value) -> Font {
+fn font(vm: &VmState, val: &Value) -> Font {
     let name = match val {
-        Value::String(s) => s.to_str().unwrap_or("medium").to_lowercase(),
+        Value::Str(s) => s.as_str(&vm.symbols).to_lowercase(),
         _ => "medium".to_string(),
     };
     match name.as_str() {
@@ -93,11 +96,11 @@ fn font(val: Value) -> Font {
     }
 }
 
-fn text_val(val: Value) -> String {
+fn text_val(vm: &VmState, val: &Value) -> String {
     match val {
-        Value::String(s) => s.to_str().unwrap_or("").to_string(),
-        Value::Integer(i) => i.to_string(),
-        Value::Number(n) => n.to_string(),
+        Value::Str(s) => s.as_str(&vm.symbols),
+        Value::Int(i) => i.to_string(),
+        Value::Num(n) => n.to_string(),
         _ => String::new(),
     }
 }
@@ -121,41 +124,103 @@ pub fn get_draw_offset() -> (u32, u32) {
     })
 }
 
-pub fn register_gfx(lua: &mut Lua) -> Result<()> {
-    lua.try_enter(|ctx| {
-        let gfx = Table::new(&ctx);
+pub fn register_gfx(vm: &mut VmState) -> Result<()> {
+    let gfx = LuaTable::new();
 
-        // Rectangle commands
-        gfx_draw!(gfx, ctx, "fill_rounded_rect", (x, y, w, h, r, c) => |ox, oy| DrawCommand::FillRoundedRect {
-            x: i32(x) + ox, y: i32(y) + oy, w: u32(w), h: u32(h), radius: u32(r), color: color(c)
-        });
+    // fill_rounded_rect(x, y, w, h, r, c)
+    // args[0]=self, args[1..6]=x,y,w,h,r,c
+    let id = vm.register_native_id(|vm, args| {
+        let (ox, oy) = DRAW_COMMANDS.with(|dc| dc.get_offset());
+        DRAW_COMMANDS.with(|dc| dc.push(DrawCommand::FillRoundedRect {
+            x: val_i32(&args[1]) + ox,
+            y: val_i32(&args[2]) + oy,
+            w: val_u32(&args[3]),
+            h: val_u32(&args[4]),
+            radius: val_u32(&args[5]),
+            color: color(vm, &args[6]),
+        }));
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("fill_rounded_rect");
+    gfx.set_sym(sym, Value::NativeFn(id));
 
-        gfx_draw!(gfx, ctx, "stroke_rounded_rect", (x, y, w, h, r, c, t) => |ox, oy| DrawCommand::StrokeRoundedRect {
-            x: i32(x) + ox, y: i32(y) + oy, w: u32(w), h: u32(h), radius: u32(r), color: color(c), thickness: u32(t)
-        });
+    // stroke_rounded_rect(x, y, w, h, r, c, t)
+    // args[0]=self, args[1..7]=x,y,w,h,r,c,t
+    let id = vm.register_native_id(|vm, args| {
+        let (ox, oy) = DRAW_COMMANDS.with(|dc| dc.get_offset());
+        DRAW_COMMANDS.with(|dc| dc.push(DrawCommand::StrokeRoundedRect {
+            x: val_i32(&args[1]) + ox,
+            y: val_i32(&args[2]) + oy,
+            w: val_u32(&args[3]),
+            h: val_u32(&args[4]),
+            radius: val_u32(&args[5]),
+            color: color(vm, &args[6]),
+            thickness: val_u32(&args[7]),
+        }));
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("stroke_rounded_rect");
+    gfx.set_sym(sym, Value::NativeFn(id));
 
-        // Circle commands
-        gfx_draw!(gfx, ctx, "fill_circle", (a, b, r, c) => |ox, oy| DrawCommand::FillCircle {
-            cx: i32(a) + ox, cy: i32(b) + oy, radius: u32(r), color: color(c)
-        });
+    // fill_circle(cx, cy, r, c)
+    // args[0]=self, args[1..4]=cx,cy,r,c
+    let id = vm.register_native_id(|vm, args| {
+        let (ox, oy) = DRAW_COMMANDS.with(|dc| dc.get_offset());
+        DRAW_COMMANDS.with(|dc| dc.push(DrawCommand::FillCircle {
+            cx: val_i32(&args[1]) + ox,
+            cy: val_i32(&args[2]) + oy,
+            radius: val_u32(&args[3]),
+            color: color(vm, &args[4]),
+        }));
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("fill_circle");
+    gfx.set_sym(sym, Value::NativeFn(id));
 
-        // Line command
-        gfx_draw!(gfx, ctx, "line", (x1, y1, x2, y2, c, t) => |ox, oy| DrawCommand::Line {
-            x1: i32(x1) + ox, y1: i32(y1) + oy, x2: i32(x2) + ox, y2: i32(y2) + oy,
-            color: color(c), thickness: u32(t)
-        });
+    // line(x1, y1, x2, y2, c, t)
+    // args[0]=self, args[1..6]=x1,y1,x2,y2,c,t
+    let id = vm.register_native_id(|vm, args| {
+        let (ox, oy) = DRAW_COMMANDS.with(|dc| dc.get_offset());
+        DRAW_COMMANDS.with(|dc| dc.push(DrawCommand::Line {
+            x1: val_i32(&args[1]) + ox,
+            y1: val_i32(&args[2]) + oy,
+            x2: val_i32(&args[3]) + ox,
+            y2: val_i32(&args[4]) + oy,
+            color: color(vm, &args[5]),
+            thickness: val_u32(&args[6]),
+        }));
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("line");
+    gfx.set_sym(sym, Value::NativeFn(id));
 
-        // Text command
-        gfx_draw!(gfx, ctx, "text", (x, y, txt, c, f) => |ox, oy| DrawCommand::Text {
-            x: i32(x) + ox, y: i32(y) + oy, text: text_val(txt), color: color(c), font: font(f)
-        });
+    // text(x, y, txt, c, f)
+    // args[0]=self, args[1..5]=x,y,txt,c,f
+    let id = vm.register_native_id(|vm, args| {
+        let (ox, oy) = DRAW_COMMANDS.with(|dc| dc.get_offset());
+        DRAW_COMMANDS.with(|dc| dc.push(DrawCommand::Text {
+            x: val_i32(&args[1]) + ox,
+            y: val_i32(&args[2]) + oy,
+            text: text_val(vm, &args[3]),
+            color: color(vm, &args[4]),
+            font: font(vm, &args[5]),
+        }));
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("text");
+    gfx.set_sym(sym, Value::NativeFn(id));
 
-        // Clear command (no offset needed but macro requires it)
-        gfx_draw!(gfx, ctx, "clear", (c) => |_ox, _oy| DrawCommand::Clear { color: color(c) });
+    // clear(c)
+    // args[0]=self, args[1]=c
+    let id = vm.register_native_id(|vm, args| {
+        DRAW_COMMANDS.with(|dc| dc.push(DrawCommand::Clear {
+            color: color(vm, &args[1]),
+        }));
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("clear");
+    gfx.set_sym(sym, Value::NativeFn(id));
 
-        ctx.set_global("gfx", gfx)?;
-        Ok(())
-    })?;
-
+    vm.set_global("gfx", Value::Table(gfx));
     Ok(())
 }

@@ -29,9 +29,6 @@ esp-idf-sys = { version = "0.36", features = ["binstart"] }
 esp-idf-svc = { version = "0.51", default-features = false, features = ["std", "binstart"] }
 esp-idf-hal = "0.45"
 
-# Lua - pure Rust implementation (works on ESP32/Xtensa)
-piccolo = "0.3"
-
 # Internal crates
 moondeck-core = { path = "moondeck-core" }
 moondeck-hal = { path = "moondeck-hal" }

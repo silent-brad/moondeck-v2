@@ -1,5 +1,5 @@
 use anyhow::Result;
-use piccolo::{Callback, CallbackReturn, Closure, Executor, Lua, String as LuaString, Table, Value};
+use crate::vm::{Fuel, LuaString, LuaTable, Value, VmState};
 use std::sync::RwLock;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_themes.rs"));
@@ -41,120 +41,144 @@ impl ThemeAccessor {
     pub fn border_accent() -> &'static str { Self::current().border_accent }
 }
 
-fn create_theme_colors_table<'gc>(ctx: piccolo::Context<'gc>, theme_name: &str) -> Result<Table<'gc>, piccolo::Error<'gc>> {
-    let colors = Table::new(&ctx);
+fn create_theme_colors_table(vm: &mut VmState, theme_name: &str) -> LuaTable {
+    let colors = LuaTable::new();
     let theme = get_theme(theme_name);
 
-    colors.set(ctx, "name", ctx.intern(theme_name.as_bytes()))?;
-    set_theme_fields!(ctx, colors, theme,
+    let sym = vm.symbols.intern("name");
+    colors.set_sym(sym, Value::Str(LuaString::Interned(vm.symbols.intern(theme_name))));
+
+    set_theme_fields!(vm.symbols, colors, theme,
         bg_primary, bg_secondary, bg_tertiary, bg_card,
         text_primary, text_secondary, text_muted, text_accent,
         accent_primary, accent_secondary, accent_success, accent_warning, accent_error,
         border_primary, border_accent,
     );
-    colors.set(ctx, "card_radius", theme.card_radius)?;
-    colors.set(ctx, "border_width", theme.border_width)?;
-    Ok(colors)
+
+    let sym = vm.symbols.intern("card_radius");
+    colors.set_sym(sym, Value::Int(theme.card_radius as i64));
+    let sym = vm.symbols.intern("border_width");
+    colors.set_sym(sym, Value::Int(theme.border_width as i64));
+
+    colors
 }
 
 fn get_lua_module_source(name: &str) -> Option<&'static str> {
     EMBEDDED_LUA_MODULES.iter().find(|(n, _)| *n == name).map(|(_, s)| *s)
 }
 
-fn load_lua_module<'gc>(ctx: piccolo::Context<'gc>, name: &str, source: &str) -> Result<Value<'gc>, piccolo::Error<'gc>> {
-    let closure = Closure::load(ctx, Some(name), source.as_bytes())?;
-    let exec = run_with_fuel!(ctx, Executor::start(ctx, closure.into(), ()), 500000);
-    match exec.take_result::<Value>(ctx)? {
-        Ok(v) => { log::debug!("Module '{}' loaded", name); Ok(v) }
-        Err(e) => { log::error!("Module '{}' failed: {:?}", name, e); Err(e) }
-    }
-}
-
-pub fn register_modules(lua: &mut Lua) -> Result<()> {
+pub fn register_modules(vm: &mut VmState) -> Result<()> {
     // Initialize theme state
     {
         let mut theme = CURRENT_THEME.write().unwrap();
         if theme.is_empty() { *theme = DEFAULT_THEME.to_string(); }
     }
 
-    lua.try_enter(|ctx| {
-        ctx.set_global("__loaded_modules", Table::new(&ctx))?;
+    // Create __loaded_modules table
+    vm.set_global("__loaded_modules", Value::Table(LuaTable::new()));
 
-        // Create theme module
-        let theme_table = Table::new(&ctx);
-        theme_table.set(ctx, "set", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (_, name): (Value, LuaString) = stack.consume(ctx)?;
-            *CURRENT_THEME.write().unwrap() = name.to_str().unwrap_or("dark").to_string();
-            stack.replace(ctx, true);
-            Ok(CallbackReturn::Return)
-        }))?;
+    // Create theme module
+    let theme_table = LuaTable::new();
 
-        theme_table.set(ctx, "get", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            if stack.len() > 0 { let _: Value = stack.consume(ctx)?; }
-            let name = CURRENT_THEME.read().unwrap();
-            let theme_name = if name.is_empty() { DEFAULT_THEME } else { &name };
-            stack.replace(ctx, create_theme_colors_table(ctx, theme_name)?);
-            Ok(CallbackReturn::Return)
-        }))?;
+    // theme.set(name)
+    let id = vm.register_native_id(|vm, args| {
+        let name = match args.get(1).or_else(|| args.first()) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => "dark".to_string(),
+        };
+        *CURRENT_THEME.write().unwrap() = name;
+        Ok(vec![Value::Bool(true)])
+    });
+    let sym = vm.symbols.intern("set");
+    theme_table.set_sym(sym, Value::NativeFn(id));
 
-        // Build themes lookup table
-        let themes = Table::new(&ctx);
-        for name in THEME_NAMES {
-            themes.set(ctx, ctx.intern(name.as_bytes()), create_theme_colors_table(ctx, name)?)?;
-        }
-        theme_table.set(ctx, "themes", themes)?;
-        theme_table.set(ctx, "current", ctx.intern(CURRENT_THEME.read().unwrap().as_bytes()))?;
-        ctx.set_global("__theme_module", theme_table)?;
+    // theme.get()
+    let id = vm.register_native_id(|vm, _args| {
+        let name = CURRENT_THEME.read().unwrap();
+        let theme_name = if name.is_empty() { DEFAULT_THEME.to_string() } else { name.clone() };
+        drop(name);
+        let t = create_theme_colors_table(vm, &theme_name);
+        Ok(vec![Value::Table(t)])
+    });
+    let sym = vm.symbols.intern("get");
+    theme_table.set_sym(sym, Value::NativeFn(id));
 
-        // Layout stub
-        let layout = Table::new(&ctx);
-        layout.set(ctx, "grid", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            stack.replace(ctx, Table::new(&ctx));
-            Ok(CallbackReturn::Return)
-        }))?;
-        ctx.set_global("__layout_module", layout)?;
+    // Build themes lookup table
+    let themes = LuaTable::new();
+    for name in THEME_NAMES {
+        let t = create_theme_colors_table(vm, name);
+        let sym = vm.symbols.intern(name);
+        themes.set_sym(sym, Value::Table(t));
+    }
+    let sym = vm.symbols.intern("themes");
+    theme_table.set_sym(sym, Value::Table(themes));
 
-        // Load components module
-        if let Some(src) = get_lua_module_source("components") {
-            log::info!("Loading components.lua ({} bytes)", src.len());
-            setup_require(ctx, false)?;
-            if let Ok(m) = load_lua_module(ctx, "components", src) {
-                ctx.set_global("__components_module", m)?;
-                if let Value::Table(loaded) = ctx.globals().get(ctx, "__loaded_modules") {
-                    let _ = loaded.set(ctx, "components", m);
+    let current_name = CURRENT_THEME.read().unwrap().clone();
+    let sym = vm.symbols.intern("current");
+    theme_table.set_sym(sym, Value::Str(LuaString::Interned(vm.symbols.intern(&current_name))));
+
+    vm.set_global("__theme_module", Value::Table(theme_table));
+
+    // Layout stub
+    let layout = LuaTable::new();
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Table(LuaTable::new())])
+    });
+    let sym = vm.symbols.intern("grid");
+    layout.set_sym(sym, Value::NativeFn(id));
+    vm.set_global("__layout_module", Value::Table(layout));
+
+    // Load components module
+    if let Some(src) = get_lua_module_source("components") {
+        log::info!("Loading components.lua ({} bytes)", src.len());
+        setup_require(vm, false);
+        let mut fuel = Fuel::with(500000);
+        match vm.exec_string(Some("components"), src, &mut fuel) {
+            Ok(results) => {
+                if let Some(module_val) = results.into_iter().next() {
+                    log::debug!("Module 'components' loaded");
+                    vm.set_global("__components_module", module_val.clone());
+                    // Also store in __loaded_modules
+                    if let Value::Table(loaded) = vm.get_global("__loaded_modules") {
+                        let sym = vm.symbols.intern("components");
+                        loaded.set_sym(sym, module_val);
+                    }
                 }
             }
+            Err(e) => {
+                log::error!("Module 'components' failed: {:?}", e);
+            }
         }
+    }
 
-        setup_require(ctx, true)?;
-        log::info!("Lua modules registered");
-        Ok(())
-    })?;
+    setup_require(vm, true);
+    log::info!("Lua modules registered");
     Ok(())
 }
 
-fn setup_require<'gc>(ctx: piccolo::Context<'gc>, final_version: bool) -> Result<(), piccolo::Error<'gc>> {
-    ctx.set_global("require", Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
-        let name: LuaString = stack.consume(ctx)?;
-        let name_str = name.to_str().unwrap_or("");
+fn setup_require(vm: &mut VmState, final_version: bool) {
+    vm.register_native("require", move |vm, args| {
+        let name = match args.first() {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => return Err(crate::vm::VmError::Runtime("require: expected string argument".into())),
+        };
 
-        let result = match name_str {
-            "theme" => ctx.globals().get(ctx, "__theme_module"),
-            "layout" => ctx.globals().get(ctx, "__layout_module"),
-            "components" if final_version => ctx.globals().get(ctx, "__components_module"),
-            _ => {
-                if let Value::Table(loaded) = ctx.globals().get(ctx, "__loaded_modules") {
-                    loaded.get(ctx, ctx.intern(name_str.as_bytes()))
-                } else { Value::Nil }
+        let result = match name.as_str() {
+            "theme" => vm.get_global("__theme_module"),
+            "layout" => vm.get_global("__layout_module"),
+            "components" if final_version => vm.get_global("__components_module"),
+            other => {
+                if let Value::Table(loaded) = vm.get_global("__loaded_modules") {
+                    loaded.get_str(other, &vm.symbols)
+                } else {
+                    Value::Nil
+                }
             }
         };
 
-        if matches!(result, Value::Nil) {
-            let msg = format!("module '{}' not found", name_str);
-            return Err(piccolo::Error::from_value(ctx.intern(msg.as_bytes()).into()));
+        if result.is_nil() {
+            return Err(crate::vm::VmError::Runtime(format!("module '{}' not found", name)));
         }
-        stack.replace(ctx, result);
-        Ok(CallbackReturn::Return)
-    }))?;
-    Ok(())
+        Ok(vec![result])
+    });
 }

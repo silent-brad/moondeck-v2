@@ -1,21 +1,22 @@
 use crate::bindings::{self, lua_serde::table_to_json};
+use crate::vm::{Fuel, VmState};
 use anyhow::{Context, Result};
 use moondeck_core::ui::{Page, WidgetInstance};
 use moondeck_hal::EnvConfig;
-use piccolo::{Closure, Executor, Fuel, Lua, StashedExecutor, Value};
 
 const EMBEDDED_INIT_LUA: &str = include_str!("../../config/init.lua");
 const EMBEDDED_PAGES_LUA: &str = include_str!("../../config/pages.lua");
 
 pub struct LuaRuntime {
-    lua: Lua,
-    executor: Option<StashedExecutor>,
+    vm: VmState,
     config_path: Option<String>,
 }
 
 impl LuaRuntime {
     pub fn new() -> Result<Self> {
-        Ok(Self { lua: Lua::full(), executor: None, config_path: None })
+        let mut vm = VmState::new();
+        crate::vm::stdlib::register_all(&mut vm);
+        Ok(Self { vm, config_path: None })
     }
 
     pub fn with_config_path(mut self, path: &str) -> Self {
@@ -24,25 +25,25 @@ impl LuaRuntime {
     }
 
     pub fn init(&mut self, env: &EnvConfig) -> Result<()> {
-        bindings::register_all(&mut self.lua, env).context("Failed to register Lua bindings")?;
+        bindings::register_all(&mut self.vm, env).context("Failed to register Lua bindings")?;
+        log::info!("Bindings registered, loading init.lua...");
         self.load_script(EMBEDDED_INIT_LUA)?;
-        self.run_pending().context("Failed to run init.lua")
+        log::info!("init.lua loaded. Checking globals...");
+        log::info!("  theme: {}", self.vm.get_global("theme").type_name());
+        log::info!("  components: {}", self.vm.get_global("components").type_name());
+        log::info!("  gfx: {}", self.vm.get_global("gfx").type_name());
+        Ok(())
     }
 
     pub fn load_script(&mut self, script: &str) -> Result<()> {
-        let executor = self.lua.try_enter(|ctx| {
-            let closure = Closure::load(ctx, None, script.as_bytes())
-                .map_err(|e| anyhow::anyhow!("Failed to load script: {:?}", e))?;
-            Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
-        })?;
-        self.executor = Some(executor);
+        let mut fuel = Fuel::with(1000000);
+        self.vm
+            .exec_string(None, script, &mut fuel)
+            .map_err(|e| anyhow::anyhow!("Failed to load script: {:?}", e))?;
         Ok(())
     }
 
     pub fn run_pending(&mut self) -> Result<()> {
-        if let Some(ref executor) = self.executor {
-            self.lua.execute::<()>(executor).map_err(|e| anyhow::anyhow!("Lua error: {:?}", e))?;
-        }
         Ok(())
     }
 
@@ -60,7 +61,7 @@ impl LuaRuntime {
         parse_pages_config(&lua_src)
     }
 
-    pub fn lua(&mut self) -> &mut Lua { &mut self.lua }
+    pub fn vm(&mut self) -> &mut VmState { &mut self.vm }
     pub fn get_theme_background(&self) -> String { bindings::get_theme_bg_primary().to_string() }
     pub fn get_current_theme(&self) -> String { bindings::get_current_theme() }
 }
@@ -122,23 +123,20 @@ fn slot_bounds(col: i32, span: i32, row: i32, row_span: i32, rows: i32) -> (i32,
 }
 
 fn parse_pages_config(lua_src: &str) -> Result<Vec<Page>> {
-    let mut lua = Lua::full();
-    let stashed: StashedExecutor = lua.try_enter(|ctx| {
-        let closure = Closure::load(ctx, Some("pages.lua".into()), lua_src.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Compile error: {:?}", e))?;
-        Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
-    })?;
+    let mut vm = VmState::new();
+    crate::vm::stdlib::register_all(&mut vm);
 
-    let json_string: String = lua.enter(|ctx| {
-        let exec = ctx.fetch(&stashed);
-        let mut fuel = Fuel::with(1000000);
-        while !exec.step(ctx, &mut fuel) { if fuel.remaining() <= 0 { break; } }
-        match exec.take_result::<Value>(ctx) {
-            Ok(Ok(Value::Table(t))) => serde_json::to_string(&table_to_json(ctx, t)).unwrap_or_default(),
-            _ => String::new(),
-        }
-    });
+    let mut fuel = Fuel::with(1000000);
+    let results = vm
+        .exec_string(Some("pages.lua"), lua_src, &mut fuel)
+        .map_err(|e| anyhow::anyhow!("Compile error: {:?}", e))?;
 
+    let json_value = match results.first() {
+        Some(crate::vm::Value::Table(t)) => table_to_json(t, &vm.symbols),
+        _ => return Err(anyhow::anyhow!("pages.lua did not return valid table")),
+    };
+
+    let json_string = serde_json::to_string(&json_value).unwrap_or_default();
     if json_string.is_empty() {
         return Err(anyhow::anyhow!("pages.lua did not return valid table"));
     }

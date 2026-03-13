@@ -1,6 +1,6 @@
 use anyhow::Result;
 use moondeck_hal::EnvConfig;
-use piccolo::{Callback, CallbackReturn, Lua, String as LuaString, Table, Value};
+use crate::vm::{LuaString, LuaTable, Value, VmState};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -67,7 +67,7 @@ fn now_millis() -> i64 {
 // Device Registration (exposes `device` global)
 // ============================================================================
 
-pub fn register_device(lua: &mut Lua) -> Result<()> {
+pub fn register_device(vm: &mut VmState) -> Result<()> {
     // Initialize boot time on first registration
     {
         let boot = BOOT_TIME.read().unwrap();
@@ -77,83 +77,128 @@ pub fn register_device(lua: &mut Lua) -> Result<()> {
         }
     }
 
-    lua.try_enter(|ctx| {
-        let device_table = Table::new(&ctx);
+    let device = LuaTable::new();
 
-        // Time functions
-        lua_fn!(device_table, ctx, "seconds", now_secs());
-        lua_fn!(device_table, ctx, "millis", now_millis());
-        lua_fn!(device_table, ctx, "uptime", {
-            let boot_time = *BOOT_TIME.read().unwrap();
-            (now_secs() as u64).saturating_sub(boot_time) as i64
-        });
+    // device.seconds() -> integer
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Int(now_secs())])
+    });
+    let sym = vm.symbols.intern("seconds");
+    device.set_sym(sym, Value::NativeFn(id));
 
-        // WiFi status getters
-        lua_getter!(device_table, ctx, "wifi_connected", WIFI_CONNECTED, |v: &bool| *v);
-        lua_getter_string!(device_table, ctx, "wifi_ssid", WIFI_SSID);
-        lua_getter_string!(device_table, ctx, "ip_address", WIFI_IP, b"Not connected");
-        lua_getter!(device_table, ctx, "wifi_rssi", WIFI_RSSI, |v: &i32| *v as i64);
+    // device.millis() -> integer
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Int(now_millis())])
+    });
+    let sym = vm.symbols.intern("millis");
+    device.set_sym(sym, Value::NativeFn(id));
 
-        // System info getters
-        lua_getter!(device_table, ctx, "free_heap", FREE_HEAP, |v: &u32| *v as i64);
-        lua_getter!(device_table, ctx, "cpu_freq", CPU_FREQ, |v: &u32| *v as i64);
+    // device.uptime() -> integer
+    let id = vm.register_native_id(|_vm, _args| {
+        let boot_time = *BOOT_TIME.read().unwrap();
+        Ok(vec![Value::Int((now_secs() as u64).saturating_sub(boot_time) as i64)])
+    });
+    let sym = vm.symbols.intern("uptime");
+    device.set_sym(sym, Value::NativeFn(id));
 
-        // device.localtime() -> table { hour, min, sec, year, month, day, weekday, yearday }
-        device_table.set(
-            ctx,
-            "localtime",
-            Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-                let unix_secs = now_secs();
-                let tz_offset = *TZ_OFFSET.read().unwrap();
-                let local_secs = unix_secs + tz_offset;
+    // device.wifi_connected() -> bool
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Bool(*WIFI_CONNECTED.read().unwrap())])
+    });
+    let sym = vm.symbols.intern("wifi_connected");
+    device.set_sym(sym, Value::NativeFn(id));
 
-                let (year, month, day, yearday) = unix_to_date(local_secs);
-                let weekday = weekday_from_unix(local_secs);
+    // device.wifi_ssid() -> string
+    let id = vm.register_native_id(|_vm, _args| {
+        let ssid = WIFI_SSID.read().unwrap().clone();
+        Ok(vec![Value::Str(LuaString::Heap(Arc::new(ssid)))])
+    });
+    let sym = vm.symbols.intern("wifi_ssid");
+    device.set_sym(sym, Value::NativeFn(id));
 
-                let day_secs = local_secs.rem_euclid(86400);
-                let hour = (day_secs / 3600) as i64;
-                let min = ((day_secs % 3600) / 60) as i64;
-                let sec = (day_secs % 60) as i64;
+    // device.ip_address() -> string
+    let id = vm.register_native_id(|_vm, _args| {
+        let ip = WIFI_IP.read().unwrap().clone();
+        let result = if ip.is_empty() { "Not connected".to_string() } else { ip };
+        Ok(vec![Value::Str(LuaString::Heap(Arc::new(result)))])
+    });
+    let sym = vm.symbols.intern("ip_address");
+    device.set_sym(sym, Value::NativeFn(id));
 
-                let result = Table::new(&ctx);
-                result.set(ctx, "hour", hour)?;
-                result.set(ctx, "min", min)?;
-                result.set(ctx, "sec", sec)?;
-                result.set(ctx, "year", year)?;
-                result.set(ctx, "month", month)?;
-                result.set(ctx, "day", day)?;
-                result.set(ctx, "weekday", weekday)?;
-                result.set(ctx, "yearday", yearday)?;
+    // device.wifi_rssi() -> integer
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Int(*WIFI_RSSI.read().unwrap() as i64)])
+    });
+    let sym = vm.symbols.intern("wifi_rssi");
+    device.set_sym(sym, Value::NativeFn(id));
 
-                stack.replace(ctx, result);
-                Ok(CallbackReturn::Return)
-            }),
-        )?;
+    // device.free_heap() -> integer
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Int(*FREE_HEAP.read().unwrap() as i64)])
+    });
+    let sym = vm.symbols.intern("free_heap");
+    device.set_sym(sym, Value::NativeFn(id));
 
-        // device.set_timezone(offset_hours)
-        device_table.set(
-            ctx,
-            "set_timezone",
-            Callback::from_fn(&ctx, |_ctx, _exec, mut stack| {
-                let (arg1, arg2): (Value, Value) = stack.consume(_ctx)?;
-                let offset_hours = match arg1 {
-                    Value::Table(_) => arg2,
-                    _ => arg1,
-                };
-                let offset = match offset_hours {
-                    Value::Integer(h) => h * 3600,
-                    Value::Number(h) => (h * 3600.0) as i64,
-                    _ => 0,
-                };
-                *TZ_OFFSET.write().unwrap() = offset;
-                Ok(CallbackReturn::Return)
-            }),
-        )?;
+    // device.cpu_freq() -> integer
+    let id = vm.register_native_id(|_vm, _args| {
+        Ok(vec![Value::Int(*CPU_FREQ.read().unwrap() as i64)])
+    });
+    let sym = vm.symbols.intern("cpu_freq");
+    device.set_sym(sym, Value::NativeFn(id));
 
-        ctx.set_global("device", device_table)?;
-        Ok(())
-    })?;
+    // device.localtime() -> table { hour, min, sec, year, month, day, weekday, yearday }
+    let id = vm.register_native_id(|vm, _args| {
+        let unix_secs = now_secs();
+        let tz_offset = *TZ_OFFSET.read().unwrap();
+        let local_secs = unix_secs + tz_offset;
 
+        let (year, month, day, yearday) = unix_to_date(local_secs);
+        let weekday = weekday_from_unix(local_secs);
+
+        let day_secs = local_secs.rem_euclid(86400);
+        let hour = (day_secs / 3600) as i64;
+        let min = ((day_secs % 3600) / 60) as i64;
+        let sec = (day_secs % 60) as i64;
+
+        let result = LuaTable::new();
+        let s = |vm: &mut VmState, name: &str| vm.symbols.intern(name);
+        result.set_sym(s(vm, "hour"), Value::Int(hour));
+        result.set_sym(s(vm, "min"), Value::Int(min));
+        result.set_sym(s(vm, "sec"), Value::Int(sec));
+        result.set_sym(s(vm, "year"), Value::Int(year));
+        result.set_sym(s(vm, "month"), Value::Int(month));
+        result.set_sym(s(vm, "day"), Value::Int(day));
+        result.set_sym(s(vm, "weekday"), Value::Int(weekday));
+        result.set_sym(s(vm, "yearday"), Value::Int(yearday));
+
+        Ok(vec![Value::Table(result)])
+    });
+    let sym = vm.symbols.intern("localtime");
+    device.set_sym(sym, Value::NativeFn(id));
+
+    // device.set_timezone(offset_hours)
+    let id = vm.register_native_id(|_vm, args| {
+        // args[0] may be self (table), args[1] is the offset
+        let offset_val = if args.len() > 1 {
+            match &args[0] {
+                Value::Table(_) => &args[1],
+                _ => &args[0],
+            }
+        } else {
+            args.first().unwrap_or(&Value::Nil)
+        };
+        let offset = match offset_val {
+            Value::Int(h) => h * 3600,
+            Value::Num(h) => (*h * 3600.0) as i64,
+            _ => 0,
+        };
+        *TZ_OFFSET.write().unwrap() = offset;
+        Ok(vec![])
+    });
+    let sym = vm.symbols.intern("set_timezone");
+    device.set_sym(sym, Value::NativeFn(id));
+
+    vm.set_global("device", Value::Table(device));
     Ok(())
 }
 
@@ -214,7 +259,7 @@ fn weekday_from_unix(local_secs: i64) -> i64 {
 // Env Registration (exposes `env` global)
 // ============================================================================
 
-pub fn register_env(lua: &mut Lua, config: &EnvConfig) -> Result<()> {
+pub fn register_env(vm: &mut VmState, config: &EnvConfig) -> Result<()> {
     let vars: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(
         config.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
     ));
@@ -222,42 +267,40 @@ pub fn register_env(lua: &mut Lua, config: &EnvConfig) -> Result<()> {
     let vars_get = vars.clone();
     let vars_set = vars;
 
-    lua.try_enter(|ctx| {
-        let env_table = Table::new(&ctx);
+    let env_table = LuaTable::new();
 
-        env_table.set(
-            ctx,
-            "get",
-            Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
-                let key: LuaString = stack.consume(ctx)?;
-                let key_str = key.to_str().unwrap_or("");
-                let vars = vars_get.lock().unwrap();
-                if let Some(value) = vars.get(key_str) {
-                    stack.replace(ctx, ctx.intern(value.as_bytes()));
-                } else {
-                    stack.replace(ctx, Value::Nil);
-                }
-                Ok(CallbackReturn::Return)
-            }),
-        )?;
+    let id = vm.register_native_id(move |vm, args| {
+        let key = match args.first() {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => return Ok(vec![Value::Nil]),
+        };
+        let vars = vars_get.lock().unwrap();
+        if let Some(value) = vars.get(&key) {
+            let sym = vm.symbols.intern(value);
+            Ok(vec![Value::Str(LuaString::Interned(sym))])
+        } else {
+            Ok(vec![Value::Nil])
+        }
+    });
+    let sym = vm.symbols.intern("get");
+    env_table.set_sym(sym, Value::NativeFn(id));
 
-        env_table.set(
-            ctx,
-            "set",
-            Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
-                let (key, value): (LuaString, LuaString) = stack.consume(ctx)?;
-                let key_str = key.to_str().unwrap_or("").to_string();
-                let value_str = value.to_str().unwrap_or("").to_string();
-                vars_set.lock().unwrap().insert(key_str, value_str);
-                stack.replace(ctx, Value::Nil);
-                Ok(CallbackReturn::Return)
-            }),
-        )?;
+    let id = vm.register_native_id(move |vm, args| {
+        let key = match args.get(0) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => return Ok(vec![Value::Nil]),
+        };
+        let value = match args.get(1) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => return Ok(vec![Value::Nil]),
+        };
+        vars_set.lock().unwrap().insert(key, value);
+        Ok(vec![Value::Nil])
+    });
+    let sym = vm.symbols.intern("set");
+    env_table.set_sym(sym, Value::NativeFn(id));
 
-        ctx.set_global("env", env_table)?;
-        Ok(())
-    })?;
-
+    vm.set_global("env", Value::Table(env_table));
     Ok(())
 }
 
@@ -265,54 +308,65 @@ pub fn register_env(lua: &mut Lua, config: &EnvConfig) -> Result<()> {
 // Util Registration (exposes `util` global)
 // ============================================================================
 
-pub fn register_util(lua: &mut Lua) -> Result<()> {
-    lua.try_enter(|ctx| {
-        let util = Table::new(&ctx);
+pub fn register_util(vm: &mut VmState) -> Result<()> {
+    let util = LuaTable::new();
 
-        // util.word_wrap(text, max_chars) -> table of lines
-        util.set(ctx, "word_wrap", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (a1, a2, a3): (Value, Value, Value) = stack.consume(ctx)?;
-            let (text, max) = if matches!(a1, Value::Table(_)) { (a2, a3) } else { (a1, a2) };
-
-            let text_str = match text {
-                Value::String(s) => s.to_str().unwrap_or("").to_string(),
-                _ => String::new(),
-            };
-            let max_chars = match max {
-                Value::Integer(n) => n.max(1) as usize,
-                Value::Number(n) => (n as i64).max(1) as usize,
-                _ => 80,
-            };
-
-            let result = Table::new(&ctx);
-            for (i, line) in word_wrap(&text_str, max_chars).iter().enumerate() {
-                result.set(ctx, (i + 1) as i64, ctx.intern(line.as_bytes()))?;
+    // util.word_wrap(text, max_chars) -> table of lines
+    let id = vm.register_native_id(|vm, args| {
+        // args[0] may be self (table), then text, max_chars
+        let (text_val, max_val) = if args.len() > 2 {
+            match &args[0] {
+                Value::Table(_) => (&args[1], &args[2]),
+                _ => (&args[0], &args[1]),
             }
-            stack.replace(ctx, result);
-            Ok(CallbackReturn::Return)
-        }))?;
+        } else if args.len() == 2 {
+            (&args[0], &args[1])
+        } else {
+            return Ok(vec![Value::Table(LuaTable::new())]);
+        };
 
-        // util.format(fmt, ...) -> string
-        util.set(ctx, "format", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (a1, a2, a3, a4, a5): (Value, Value, Value, Value, Value) = stack.consume(ctx)?;
-            let (fmt, args) = if matches!(a1, Value::Table(_)) {
-                (a2, vec![a3, a4, a5])
-            } else {
-                (a1, vec![a2, a3, a4])
-            };
+        let text_str = match text_val {
+            Value::Str(s) => s.as_str(&vm.symbols),
+            _ => String::new(),
+        };
+        let max_chars = match max_val {
+            Value::Int(n) => (*n).max(1) as usize,
+            Value::Num(n) => (*n as i64).max(1) as usize,
+            _ => 80,
+        };
 
-            let fmt_str = match fmt {
-                Value::String(s) => s.to_str().unwrap_or("").to_string(),
-                _ => String::new(),
-            };
+        let result = LuaTable::new();
+        for (i, line) in word_wrap(&text_str, max_chars).iter().enumerate() {
+            let sym = vm.symbols.intern(line);
+            result.set_int((i + 1) as i64, Value::Str(LuaString::Interned(sym)));
+        }
+        Ok(vec![Value::Table(result)])
+    });
+    let sym = vm.symbols.intern("word_wrap");
+    util.set_sym(sym, Value::NativeFn(id));
 
-            stack.replace(ctx, ctx.intern(format_string(&fmt_str, &args).as_bytes()));
-            Ok(CallbackReturn::Return)
-        }))?;
+    // util.format(fmt, ...) -> string
+    let id = vm.register_native_id(|vm, args| {
+        // args[0] may be self (table), then fmt, arg1, arg2, ...
+        let (fmt_val, format_args) = if !args.is_empty() && matches!(&args[0], Value::Table(_)) {
+            (args.get(1), &args[2..])
+        } else {
+            (args.first(), if args.len() > 1 { &args[1..] } else { &[] })
+        };
 
-        ctx.set_global("util", util)?;
-        Ok(())
-    })?;
+        let fmt_str = match fmt_val {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => String::new(),
+        };
+
+        let result = format_string(&fmt_str, format_args, vm);
+        let sym = vm.symbols.intern(&result);
+        Ok(vec![Value::Str(LuaString::Interned(sym))])
+    });
+    let sym = vm.symbols.intern("format");
+    util.set_sym(sym, Value::NativeFn(id));
+
+    vm.set_global("util", Value::Table(util));
     Ok(())
 }
 
@@ -352,7 +406,7 @@ fn word_wrap(text: &str, max: usize) -> Vec<String> {
     lines
 }
 
-fn format_string(fmt: &str, args: &[Value]) -> String {
+fn format_string(fmt: &str, args: &[Value], vm: &VmState) -> String {
     let mut result = String::new();
     let mut arg_idx = 0;
     let mut chars = fmt.chars().peekable();
@@ -369,7 +423,7 @@ fn format_string(fmt: &str, args: &[Value]) -> String {
                 if let Some(t) = chars.next() {
                     spec.push(t);
                     if arg_idx < args.len() {
-                        result.push_str(&format_value(&spec, &args[arg_idx]));
+                        result.push_str(&format_value(&spec, &args[arg_idx], vm));
                         arg_idx += 1;
                     }
                 }
@@ -380,12 +434,12 @@ fn format_string(fmt: &str, args: &[Value]) -> String {
     result
 }
 
-fn format_value(spec: &str, value: &Value) -> String {
+fn format_value(spec: &str, value: &Value, vm: &VmState) -> String {
     let num = match value {
-        Value::Integer(i) => *i as f64,
-        Value::Number(f) => *f,
-        Value::String(s) if spec.ends_with('s') => return s.to_str().unwrap_or("").into(),
-        Value::String(s) => s.to_str().unwrap_or("0").parse().unwrap_or(0.0),
+        Value::Int(i) => *i as f64,
+        Value::Num(f) => *f,
+        Value::Str(s) if spec.ends_with('s') => return s.as_str(&vm.symbols),
+        Value::Str(s) => s.as_str(&vm.symbols).parse().unwrap_or(0.0),
         Value::Nil => return String::new(),
         _ => 0.0,
     };
@@ -404,6 +458,7 @@ fn format_value(spec: &str, value: &Value) -> String {
             else if width > 0 { format!("{:>w$}", i, w = width) }
             else { i.to_string() }
         }
+        Some('s') => vm.value_to_string(value),
         _ => num.to_string(),
     }
 }

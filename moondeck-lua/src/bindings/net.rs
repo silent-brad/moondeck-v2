@@ -1,78 +1,101 @@
 use super::lua_serde::{json_to_lua, lua_to_json, parse_headers, parse_timeout};
 use anyhow::Result;
-use piccolo::{Callback, CallbackReturn, Lua, String as LuaString, Table, Value};
+use crate::vm::{LuaString, LuaTable, Value, VmState};
 use std::collections::HashMap;
+use std::sync::Arc;
 
-pub fn register_net(lua: &mut Lua) -> Result<()> {
-    lua.try_enter(|ctx| {
-        let net = Table::new(&ctx);
+pub fn register_net(vm: &mut VmState) -> Result<()> {
+    let net = LuaTable::new();
 
-        // net.http_get(url, headers?, timeout_ms?) -> { ok, body, error?, status }
-        net.set(ctx, "http_get", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (url, headers, timeout): (LuaString, Value, Value) = stack.consume(ctx)?;
-            let result = do_http_get(
-                url.to_str().unwrap_or(""),
-                &parse_headers(headers),
-                parse_timeout(timeout),
-            );
-            stack.replace(ctx, make_response(ctx, result));
-            Ok(CallbackReturn::Return)
-        }))?;
+    // net.http_get(url, headers?, timeout_ms?) -> { ok, body, error?, status }
+    let id = vm.register_native_id(|vm, args| {
+        let url = match args.get(0) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => String::new(),
+        };
+        let headers_val = args.get(1).cloned().unwrap_or(Value::Nil);
+        let timeout_val = args.get(2).cloned().unwrap_or(Value::Nil);
+        let hdrs = parse_headers(&vm.symbols, &headers_val);
+        let timeout = parse_timeout(&timeout_val);
+        let result = do_http_get(&url, &hdrs, timeout);
+        let response = make_response(vm, result);
+        Ok(vec![Value::Table(response)])
+    });
+    let sym = vm.symbols.intern("http_get");
+    net.set_sym(sym, Value::NativeFn(id));
 
-        // net.http_post(url, body, content_type?, headers?, timeout_ms?) -> { ok, body, error?, status }
-        net.set(ctx, "http_post", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (url, body, content_type, headers, timeout): (LuaString, LuaString, LuaString, Value, Value) =
-                stack.consume(ctx)?;
-            let mut header_map = parse_headers(headers);
-            header_map.insert("Content-Type".into(), content_type.to_str().unwrap_or("application/json").into());
-            let result = do_http_post(
-                url.to_str().unwrap_or(""),
-                body.to_str().unwrap_or(""),
-                &header_map,
-                parse_timeout(timeout),
-            );
-            stack.replace(ctx, make_response(ctx, result));
-            Ok(CallbackReturn::Return)
-        }))?;
+    // net.http_post(url, body, content_type?, headers?, timeout_ms?) -> { ok, body, error?, status }
+    let id = vm.register_native_id(|vm, args| {
+        let url = match args.get(0) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => String::new(),
+        };
+        let body = match args.get(1) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => String::new(),
+        };
+        let content_type = match args.get(2) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => "application/json".to_string(),
+        };
+        let headers_val = args.get(3).cloned().unwrap_or(Value::Nil);
+        let timeout_val = args.get(4).cloned().unwrap_or(Value::Nil);
+        let mut header_map = parse_headers(&vm.symbols, &headers_val);
+        header_map.insert("Content-Type".into(), content_type);
+        let result = do_http_post(&url, &body, &header_map, parse_timeout(&timeout_val));
+        let response = make_response(vm, result);
+        Ok(vec![Value::Table(response)])
+    });
+    let sym = vm.symbols.intern("http_post");
+    net.set_sym(sym, Value::NativeFn(id));
 
-        // net.json_decode(json_string) -> table or nil
-        net.set(ctx, "json_decode", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let json_str: LuaString = stack.consume(ctx)?;
-            let result = serde_json::from_str(json_str.to_str().unwrap_or(""))
-                .map(|v| json_to_lua(ctx, &v))
-                .unwrap_or(Value::Nil);
-            stack.replace(ctx, result);
-            Ok(CallbackReturn::Return)
-        }))?;
+    // net.json_decode(json_string) -> table or nil
+    let id = vm.register_native_id(|vm, args| {
+        let json_str = match args.get(0) {
+            Some(Value::Str(s)) => s.as_str(&vm.symbols),
+            _ => String::new(),
+        };
+        let result = serde_json::from_str(&json_str)
+            .map(|v| json_to_lua(&mut vm.symbols, &v))
+            .unwrap_or(Value::Nil);
+        Ok(vec![result])
+    });
+    let sym = vm.symbols.intern("json_decode");
+    net.set_sym(sym, Value::NativeFn(id));
 
-        // net.json_encode(table) -> string or nil
-        net.set(ctx, "json_encode", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let value: Value = stack.consume(ctx)?;
-            let result = serde_json::to_string(&lua_to_json(ctx, value))
-                .map(|s| Value::String(ctx.intern(s.as_bytes())))
-                .unwrap_or(Value::Nil);
-            stack.replace(ctx, result);
-            Ok(CallbackReturn::Return)
-        }))?;
+    // net.json_encode(table) -> string or nil
+    let id = vm.register_native_id(|vm, args| {
+        let value = args.get(0).cloned().unwrap_or(Value::Nil);
+        let result = serde_json::to_string(&lua_to_json(&vm.symbols, &value))
+            .map(|s| Value::Str(LuaString::Heap(Arc::new(s))))
+            .unwrap_or(Value::Nil);
+        Ok(vec![result])
+    });
+    let sym = vm.symbols.intern("json_encode");
+    net.set_sym(sym, Value::NativeFn(id));
 
-        ctx.set_global("net", net)?;
-        Ok(())
-    })?;
+    vm.set_global("net", Value::Table(net));
     Ok(())
 }
 
-fn make_response<'gc>(ctx: piccolo::Context<'gc>, result: Result<(u16, String), String>) -> Table<'gc> {
-    let response = Table::new(&ctx);
+fn make_response(vm: &mut VmState, result: Result<(u16, String), String>) -> LuaTable {
+    let response = LuaTable::new();
     match result {
         Ok((status, body)) => {
-            let _ = response.set(ctx, "ok", (200..300).contains(&status));
-            let _ = response.set(ctx, "status", status as i64);
-            let _ = response.set(ctx, "body", ctx.intern(body.as_bytes()));
+            let ok_sym = vm.symbols.intern("ok");
+            response.set_sym(ok_sym, Value::Bool((200..300).contains(&status)));
+            let status_sym = vm.symbols.intern("status");
+            response.set_sym(status_sym, Value::Int(status as i64));
+            let body_sym = vm.symbols.intern("body");
+            response.set_sym(body_sym, Value::Str(LuaString::Heap(Arc::new(body))));
         }
         Err(e) => {
-            let _ = response.set(ctx, "ok", false);
-            let _ = response.set(ctx, "error", ctx.intern(e.as_bytes()));
-            let _ = response.set(ctx, "body", ctx.intern(b""));
+            let ok_sym = vm.symbols.intern("ok");
+            response.set_sym(ok_sym, Value::Bool(false));
+            let error_sym = vm.symbols.intern("error");
+            response.set_sym(error_sym, Value::Str(LuaString::Heap(Arc::new(e))));
+            let body_sym = vm.symbols.intern("body");
+            response.set_sym(body_sym, Value::Str(LuaString::Heap(Arc::new(String::new()))));
         }
     }
     response
