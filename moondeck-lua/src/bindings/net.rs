@@ -92,11 +92,16 @@ fn do_http_get(url: &str, headers: &HashMap<String, String>, timeout_ms: u32) ->
 #[cfg(feature = "esp")]
 fn do_http_post(url: &str, body: &str, headers: &HashMap<String, String>, timeout_ms: u32) -> Result<(u16, String), String> {
     use moondeck_hal::HttpClient;
+    log::info!("HTTP POST: {}", url);
     let client = HttpClient::with_timeout(timeout_ms);
     let content_type = headers.get("Content-Type").map(|s| s.as_str()).unwrap_or("application/json");
-    client.post(url, body, content_type)
-        .map(|r| (r.status, r.body))
-        .map_err(|e| format!("{}", e))
+    let extra: Vec<(&str, &str)> = headers.iter()
+        .filter(|(k, _)| k.as_str() != "Content-Type")
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    client.post_with_headers(url, body, content_type, &extra)
+        .map(|r| { log::info!("HTTP {}: {} bytes", r.status, r.body.len()); (r.status, r.body) })
+        .map_err(|e| { log::error!("HTTP error: {:?}", e); format!("{}", e) })
 }
 
 #[cfg(not(feature = "esp"))]

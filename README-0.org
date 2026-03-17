@@ -1,0 +1,296 @@
+#+TITLE: Moondeck v2
+#+DESCRIPTION: Cyberdeck display configured in Lua
+#+AUTHOR: [[https://dev.knightoffaith.systems][Brad White]]
+#+REPOSITORY: https://github.com/silent-brad/moondeck-v2
+#+DATE: 2026-03-04
+
+Cyberdeck display system for ESP32-S3 color LCD panels, configured entirely in Lua.
+
+* Features
+
+- 🖥️ *800×480 RGB565 Color Display* - Full color LCD support
+- 🔧 *Lua Configuration* - Define pages and widgets in Lua
+- 🧩 *Widget System* - Create custom widgets with easy-to-use APIs
+- 📶 *WiFi Connectivity* - Fetch data from APIs
+- 👆 *Touch & Gestures* - Swipe between pages, tap to interact
+- 🦀 *Built with Rust* - Safe, fast, and reliable
+
+* Display
+
+- [[https://www.amazon.com/ELECROW-Dual-Core-Compatible-PlatformIO-MicroPython/dp/B0DL5WB7RQ/][Elecrow ESP32 5-inch Display]] (800×480 RGB565)
+
+* Prerequisites
+
+- [[https://nixos.org/download.html][Nix]] with flakes enabled
+- USB connection to device
+
+* Quick Start
+
+** 1. Enter Development Environment
+
+#+begin_src sh
+nix develop
+#+end_src
+
+** 2. Configure (Optional)
+
+#+begin_src sh
+cp .env.example .env
+# Edit .env with your WiFi credentials and API keys
+#+end_src
+
+** 4. Build
+
+#+begin_src sh
+cargo build --release -p moondeck-app
+#+end_src
+
+** 5. Flash to Device
+
+#+begin_src sh
+espflash flash target/xtensa-esp32s3-espidf/release/moondeck --partition-table target/xtensa-esp32s3-espidf/release/partition-table.bin
+#+end_src
+
+** 6. Monitor Output
+
+#+begin_src sh
+espflash monitor
+#+end_src
+
+* Project Structure
+
+#+begin_src text
+moondeck-v2/
+├── moondeck-app/      # Main application binary
+├── moondeck-core/     # Core types (graphics, UI, events)
+├── moondeck-hal/      # Hardware abstraction (display, touch, WiFi)
+├── moondeck-lua/      # Lua runtime and widget system
+├── config/            # Lua configuration files
+│   ├── init.lua       # Boot script
+│   ├── pages.lua      # Page definitions
+│   ├── layout.lua     # Layouts definitions
+│   ├── components.lua # Component library
+│   ├── theme.lua      # Theming
+│   └── widgets/       # Widget implementations
+│       ├── clock.lua
+│       ├── weather.lua
+│       ├── status.lua
+│       ├── quote.lua
+│       └── sysinfo.lua
+└── flake.nix          # Nix development environment
+#+end_src
+
+* Configuration
+
+** Pages (config/pages.lua)
+
+#+begin_src lua
+return {
+    pages = {
+        {
+            id = "home",
+            title = "Home",
+            background = "#1a1a2e",
+            widgets = {
+                {
+                    module = "widgets.clock",
+                    x = 20, y = 20,
+                    w = 760, h = 180,
+                    update_interval = 1000,
+                    opts = { show_seconds = true },
+                },
+            },
+        },
+    },
+}
+#+end_src
+
+** Environment Variables (.env)
+
+#+begin_src sh
+WIFI_SSID=your_wifi_ssid
+WIFI_PASSWORD=your_wifi_password
+WEATHER_API_KEY=your_openweathermap_key
+#+end_src
+
+* Creating Custom Widgets
+
+Create a new file in =config/widgets/= (e.g., =mywidget.lua=):
+
+#+begin_src lua
+local M = {}
+
+function M.init(ctx)
+    return {
+        counter = 0,
+        width = ctx.width,
+        height = ctx.height,
+    }
+end
+
+function M.update(state, delta_ms)
+    state.counter = state.counter + 1
+end
+
+function M.render(state, gfx)
+    gfx:fill_rounded_rect(0, 0, state.width, state.height, 12, "#0f3460")
+    gfx:text(20, 50, "Count: " .. state.counter, "white", "large")
+end
+
+function M.on_event(state, event)
+    if event.type == "tap" then
+        state.counter = 0
+        return true
+    end
+    return false
+end
+
+return M
+#+end_src
+
+Add to =config/pages.lua=:
+
+#+begin_src lua
+{
+    module = "widgets.mywidget",
+    x = 20, y = 20,
+    w = 400, h = 200,
+    update_interval = 100,
+},
+#+end_src
+
+* Lua API Reference
+
+** Graphics (gfx)
+
+| Function                                       | Description           |
+|------------------------------------------------+-----------------------|
+| =gfx:clear(color)=                             | Clear screen          |
+| =gfx:fill_rect(x, y, w, h, color)=             | Filled rectangle      |
+| =gfx:stroke_rect(x, y, w, h, color, thick?)=   | Rectangle outline     |
+| =gfx:fill_rounded_rect(x, y, w, h, r, color)=  | Rounded rectangle     |
+| =gfx:fill_circle(cx, cy, r, color)=            | Filled circle         |
+| =gfx:line(x1, y1, x2, y2, color, thick?)=      | Line                  |
+| =gfx:text(x, y, text, color, font)=            | Draw text             |
+
+Fonts: ="small"=, ="medium"=, ="large"=, ="xlarge"=
+
+Colors: Hex strings (=#ff0000=) or names (=white=, =black=, =red=, etc.)
+
+* Adding Custom Fonts
+
+Fonts are auto-discovered at build time from =moondeck-core/src/assets/fonts/=.
+
+** 1. Add Font Files
+
+Create a directory with the font family name and add =.ttf= files:
+
+#+begin_src text
+moondeck-core/src/assets/fonts/
+├── Inter/
+│   ├── Inter-Regular.ttf
+│   ├── Inter-Bold.ttf
+│   ├── Inter-Italic.ttf
+│   └── Inter-BoldItalic.ttf
+├── EBGaramond/
+│   └── ...
+└── MyNewFont/              # Add your font here
+    ├── MyNewFont-Regular.ttf
+    ├── MyNewFont-Bold.ttf
+    └── MyNewFont-Italic.ttf
+#+end_src
+
+** 2. Naming Convention
+
+Files must follow the pattern: =FontName-Style.ttf=
+
+| Filename              | Generated Weight | Generated Style |
+|-----------------------+------------------+-----------------|
+| =FontName-Regular.ttf=  | Regular          | Normal          |
+| =FontName-Bold.ttf=     | Bold             | Normal          |
+| =FontName-Italic.ttf=   | Regular          | Italic          |
+| =FontName-BoldItalic.ttf= | Bold           | Italic          |
+
+** 3. Rebuild
+
+#+begin_src sh
+cargo build -p moondeck-core
+#+end_src
+
+The build script generates:
+- =FontFamily::MyNewFont= enum variant
+- =TtfFont::mynewfont(size)=, =TtfFont::mynewfont_bold(size)=, etc. constructors
+- Bitmap font data for sizes 14, 18, 24, 32
+
+** Networking (net)
+
+| Function                              | Description        |
+|---------------------------------------+--------------------|
+| =net.http_get(url, headers?, timeout?)= | HTTP GET request |
+| =net.http_post(url, body, type?)=     | HTTP POST request  |
+| =net.json_decode(str)=                | Parse JSON string  |
+| =net.json_encode(table)=              | Encode to JSON     |
+
+** Environment (env)
+
+| Function                  | Description             |
+|---------------------------+-------------------------|
+| =env.get(key)=            | Get env var (or nil)    |
+| =env.get_or(key, default)= | Get with default value |
+
+** Device (device)
+
+| Function               | Description            |
+|------------------------+------------------------|
+| =device.millis()=      | Milliseconds since boot |
+| =device.seconds()=     | Seconds since epoch    |
+| =device.screen_width()= | Display width (800)   |
+| =device.screen_height()= | Display height (480) |
+| =device.log_info(msg)= | Log info message       |
+
+* Navigation
+
+- *Swipe Left/Right* - Navigate between pages
+- *Tap* - Interact with widgets (widget-specific)
+- *Long Press* - Widget-specific actions
+
+* Building for Production
+
+#+begin_src sh
+# Optimized release build
+cargo build --release -p moondeck-app
+
+# Check binary size
+ls -lh target/xtensa-esp32s3-espidf/release/moondeck
+#+end_src
+
+* Troubleshooting
+
+** Build Errors
+
+#+begin_src sh
+# Clean and rebuild
+cargo clean
+nix develop
+cargo build --release
+#+end_src
+
+** WiFi Not Connecting
+
+- Check =.env= file exists and has correct credentials
+- Ensure 2.4GHz network (ESP32 doesn't support 5GHz)
+
+** Display Not Working
+
+- Verify pin connections match =moondeck-hal/src/display/rgb_panel.rs=
+- Check backlight pin is correctly configured
+
+* License
+
+MIT License
+
+* Acknowledgments
+
+- [[https://www.elecrow.com/esp32-display-5-inch-hmi-display-rgb-tft-lcd-touch-screen-support-lvgl.html][Elecrow CrowPanel]] hardware
+- [[https://trmnl.com/][TRMNL]] for widget display inspiration
+- [[https://github.com/esp-rs][esp-rs]] community for Rust ESP32 support

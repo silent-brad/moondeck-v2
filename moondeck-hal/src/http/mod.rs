@@ -73,15 +73,21 @@ impl HttpClient {
     }
 
     pub fn post(&self, url: &str, body: &str, content_type: &str) -> Result<HttpResponse> {
+        self.post_with_headers(url, body, content_type, &[])
+    }
+
+    pub fn post_with_headers(&self, url: &str, body: &str, content_type: &str, extra_headers: &[(&str, &str)]) -> Result<HttpResponse> {
         let config = self.create_config();
 
         let mut client = EspHttpConnection::new(&config)
             .context("Failed to create HTTP connection")?;
 
-        let headers = [
+        let content_len = body.len().to_string();
+        let mut headers: Vec<(&str, &str)> = vec![
             ("Content-Type", content_type),
-            ("Content-Length", &body.len().to_string()),
+            ("Content-Length", &content_len),
         ];
+        headers.extend_from_slice(extra_headers);
 
         client.initiate_request(
             esp_idf_svc::http::Method::Post,

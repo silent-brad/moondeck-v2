@@ -107,5 +107,20 @@ return {
 				},
 			},
 		},
+
+    {
+      id = "heatmap",
+      title = "GitHub Heatmap",
+      layout = "full",
+      widgets = {
+        {
+          module = "widgets.github",
+          slot = 1,
+          update_interval = 3600000,
+          opts = {},
+        },
+      },
+    },
+
 	},
 }
