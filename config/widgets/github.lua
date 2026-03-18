@@ -121,8 +121,8 @@ function M.render(state, gfx)
     return lerp(a[1], b[1], t) * 65536 + lerp(a[2], b[2], t) * 256 + lerp(a[3], b[3], t)
   end
 
-  -- Generate gradient from bg to accent_success
-  local base = th.bg or "#161b22"
+  -- Generate gradient
+  local base = th.accent_secondary
   local target = th.accent_success
   local heat_colors = {
     mix(base, base, 0), -- 0 contributions (base color)
