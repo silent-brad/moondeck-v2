@@ -98,6 +98,38 @@ themes.mint = {
 	border_width = 1,
 }
 
+-- Rose pine theme (dark variant)
+themes.rose_pine = {
+	name = "rose_pine",
+
+	-- Background colors
+	bg_primary = "#191724",
+	bg_secondary = "#1f1d2e",
+	bg_tertiary = "#26233a",
+	bg_card = "#1f1d2e",
+
+	-- Text colors
+	text_primary = "#e0def4",
+	text_secondary = "#908caa",
+	text_muted = "#6e6a86",
+	text_accent = "#ebbcba",
+
+	-- Accent colors
+	accent_primary = "#ebbcba",
+	accent_secondary = "#31748f",
+	accent_success = "#9ccfd8",
+	accent_warning = "#f6c177",
+	accent_error = "#eb6f92",
+
+	-- Border colors
+	border_primary = "#26233a",
+	border_accent = "#ebbcba",
+
+	-- Component specific
+	card_radius = 12,
+	border_width = 1,
+}
+
 -- Typography configuration
 local typography = {
 	-- Font families (referenced by name, resolved by renderer)
@@ -158,7 +190,7 @@ return {
 	screen = screen,
 
 	-- Current active theme (can be changed)
-	current = "dark",
+	current = "rose_pine",
 
 	-- Helper to get current theme
 	get = function(self)

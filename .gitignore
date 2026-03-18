@@ -15,3 +15,5 @@ moondeck-app/sdkconfig.partitions
 # Nix
 result
 result-*
+
+tmp/

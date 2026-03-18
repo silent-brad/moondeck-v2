@@ -44,8 +44,8 @@ function M.update(state, delta_ms)
 			.. state.username
 			.. '\\"){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{contributionCount date}}}}}}"}'
 
-		local headers = {
-			Authorization = "Bearer " .. token,
+      local headers = {
+        Authorization = "Bearer " .. token,
 			["User-Agent"] = "moondeck",
 		}
 
@@ -71,24 +71,62 @@ function M.update(state, delta_ms)
 	end
 end
 
--- Map contribution count to a color intensity
-local function count_to_color(count)
-	if count == 0 then
-		return "#161b22"
-	elseif count <= 3 then
-		return "#0e4429"
-	elseif count <= 6 then
-		return "#006d32"
-	elseif count <= 9 then
-		return "#26a641"
-	else
-		return "#39d353"
-	end
-end
-
-function M.render(state, gfx)
+  function M.render(state, gfx)
 	local th = theme:get()
 	local px, py = 20, 15
+
+	-- Color interpolation helpers
+	local hex_digits = {
+		["0"]=0,["1"]=1,["2"]=2,["3"]=3,["4"]=4,["5"]=5,["6"]=6,["7"]=7,
+		["8"]=8,["9"]=9,["a"]=10,["b"]=11,["c"]=12,["d"]=13,["e"]=14,["f"]=15,
+		["A"]=10,["B"]=11,["C"]=12,["D"]=13,["E"]=14,["F"]=15,
+	}
+
+	local function hex2(s, pos)
+		local hi = hex_digits[string.sub(s, pos, pos)] or 0
+		local lo = hex_digits[string.sub(s, pos + 1, pos + 1)] or 0
+		return hi * 16 + lo
+	end
+
+	local function hex_to_rgb(hex)
+		return { hex2(hex, 2), hex2(hex, 4), hex2(hex, 6) }
+	end
+
+	local function lerp(a, b, t)
+		return math.floor(a + (b - a) * t)
+	end
+
+	local function mix(c1, c2, t)
+		local a = hex_to_rgb(c1)
+		local b = hex_to_rgb(c2)
+		return lerp(a[1], b[1], t) * 65536 + lerp(a[2], b[2], t) * 256 + lerp(a[3], b[3], t)
+	end
+
+	-- Generate gradient from bg to accent_success
+	local base = th.bg or "#161b22"
+	local target = th.accent_success
+	local heat_colors = {
+		mix(base, base, 0),          -- 0 contributions (base color)
+		mix(base, target, 0.25),     -- low
+		mix(base, target, 0.5),      -- medium
+		mix(base, target, 0.75),     -- high
+		mix(target, target, 0),      -- very high (target color)
+	}
+
+	-- Map contribution count to heatmap color
+	local function count_to_color(count)
+		if count == 0 then
+			return heat_colors[1]
+		elseif count <= 3 then
+			return heat_colors[2]
+		elseif count <= 6 then
+			return heat_colors[3]
+		elseif count <= 9 then
+			return heat_colors[4]
+		else
+			return heat_colors[5]
+		end
+	end
 
 	-- Draw card
 	components.card(gfx, 0, 0, state.width, state.height)
@@ -166,9 +204,8 @@ function M.render(state, gfx)
 	if legend_y + 10 < state.height - py then
 		gfx:text(px, legend_y, "Less", th.text_muted, "small")
 		local lx = px + 30
-		local legend_colors = { "#161b22", "#0e4429", "#006d32", "#26a641", "#39d353" }
-		for i = 1, #legend_colors do
-			gfx:fill_rounded_rect(lx + (i - 1) * (cell + gap), legend_y, cell, cell, 0, legend_colors[i])
+		for i = 1, #heat_colors do
+			gfx:fill_rounded_rect(lx + (i - 1) * (cell + gap), legend_y, cell, cell, 0, heat_colors[i])
 		end
 		gfx:text(lx + 5 * (cell + gap) + 4, legend_y, "More", th.text_muted, "small")
 	end
