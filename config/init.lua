@@ -11,48 +11,48 @@ components = require("components")
 -- Set theme from environment (or use default from theme.lua)
 local theme_name = env.get("THEME")
 if theme_name then
-	if theme:set(theme_name) then
-		print("Theme: " .. theme_name)
-	else
-		print("Theme '" .. theme_name .. "' not found, using default")
-	end
+  if theme:set(theme_name) then
+    print("Theme: " .. theme_name)
+  else
+    print("Theme '" .. theme_name .. "' not found, using default")
+  end
 end
 -- Theme is already initialized to default from config/theme.lua
 print("Active theme: " .. (theme:get().name or "unknown"))
 
 -- Global configuration
 config = {
-	refresh_rate = 30,
-	screen_width = 800,
-	screen_height = 480,
+  refresh_rate = 30,
+  screen_width = 800,
+  screen_height = 480,
 }
 
 -- Utility functions available to all widgets
 utils = {}
 
 function utils.format_time(timestamp)
-	local secs = timestamp % 60
-	local mins = math.floor(timestamp / 60) % 60
-	local hours = math.floor(timestamp / 3600) % 24
-	return string.format("%02d:%02d:%02d", hours, mins, secs)
+  local secs = timestamp % 60
+  local mins = math.floor(timestamp / 60) % 60
+  local hours = math.floor(timestamp / 3600) % 24
+  return string.format("%02d:%02d:%02d", hours, mins, secs)
 end
 
 function utils.format_number(n)
-	if n >= 1000000 then
-		return string.format("%.1fM", n / 1000000)
-	elseif n >= 1000 then
-		return string.format("%.1fK", n / 1000)
-	else
-		return tostring(n)
-	end
+  if n >= 1000000 then
+    return string.format("%.1fM", n / 1000000)
+  elseif n >= 1000 then
+    return string.format("%.1fK", n / 1000)
+  else
+    return tostring(n)
+  end
 end
 
 function utils.clamp(value, min, max)
-	return math.max(min, math.min(max, value))
+  return math.max(min, math.min(max, value))
 end
 
 function utils.lerp(a, b, t)
-	return a + (b - a) * t
+  return a + (b - a) * t
 end
 
 print("Initialization complete!")
