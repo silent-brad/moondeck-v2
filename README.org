@@ -80,6 +80,37 @@ moondeck-v2/
 └── flake.nix          # Nix development environment
 #+end_src
 
+* Live Reload
+
+Edit Lua widget files on your computer and push them to the device over WiFi — no re-flash needed. The device IP is shown on the display during boot.
+
+** Upload a Modified Widget
+
+#+begin_src sh
+curl -X POST "http://<device-ip>/upload?path=config/widgets/clock.lua" --data-binary @config/widgets/clock.lua
+#+end_src
+
+** Upload Pages or Init Config
+
+#+begin_src sh
+curl -X POST "http://<device-ip>/upload?path=config/pages.lua" --data-binary @config/pages.lua
+curl -X POST "http://<device-ip>/upload?path=config/init.lua" --data-binary @config/init.lua
+#+end_src
+
+** Trigger Reload
+
+After uploading, tell the device to reload all Lua config:
+
+#+begin_src sh
+curl -X POST "http://<device-ip>/reload"
+#+end_src
+
+** One-Liner (Upload + Reload)
+
+#+begin_src sh
+curl -X POST "http://<device-ip>/upload?path=config/widgets/clock.lua" --data-binary @config/widgets/clock.lua && curl -X POST "http://<device-ip>/reload"
+#+end_src
+
 * Troubleshooting
 
 ** Build Errors
