@@ -34,13 +34,12 @@ impl LuaRuntime {
 
     pub fn read_widget_source(&self, module: &str) -> Option<String> {
         let base = self.config_path.as_ref()?;
-        // module names are like "widgets.clock" -> "widgets/clock/init.lua"
         let rel_path = module.replace('.', "/");
-        let dir_path = format!("{}/{}/init.lua", base, rel_path);
-        std::fs::read_to_string(&dir_path)
+        // Try flat file first (handles submodules like widgets/github/colors.lua)
+        std::fs::read_to_string(format!("{}/{}.lua", base, rel_path))
             .or_else(|_| {
-                // Fallback to flat file for compatibility
-                std::fs::read_to_string(format!("{}/{}.lua", base, rel_path))
+                // Then try directory module (widgets/github/init.lua)
+                std::fs::read_to_string(format!("{}/{}/init.lua", base, rel_path))
             })
             .ok()
     }

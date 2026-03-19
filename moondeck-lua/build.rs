@@ -18,18 +18,35 @@ fn generate_embedded_lua(manifest_dir: &str, out_dir: &str) {
 
     let mut entries: Vec<(String, String)> = Vec::new();
 
-    // Scan widgets/ — each subdirectory with init.lua becomes "widgets.<name>"
+    // Scan widgets/ — each subdirectory: init.lua => "widgets.<name>",
+    // sibling .lua files => "widgets.<name>.<stem>". Sort so init.lua comes AFTER
+    // other files (its code may require sibling modules).
     let widgets_dir = config_dir.join("widgets");
     if let Ok(dirs) = fs::read_dir(&widgets_dir) {
         let mut dirs: Vec<_> = dirs.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).collect();
         dirs.sort_by_key(|e| e.path());
-        for entry in dirs {
-            let init = entry.path().join("init.lua");
-            if init.exists() {
-                let name = entry.file_name();
-                let module = format!("widgets.{}", name.to_str().unwrap());
-                let abs = fs::canonicalize(&init).unwrap().display().to_string().replace('\\', "/");
-                entries.push((module, abs));
+        for dir in dirs {
+            let widget_name = dir.file_name().to_str().unwrap().to_string();
+            if let Ok(files) = fs::read_dir(dir.path()) {
+                let mut files: Vec<_> = files.filter_map(|e| e.ok()).collect();
+                files.sort_by(|a, b| {
+                    let a_init = a.path().file_stem().and_then(|s| s.to_str()) == Some("init");
+                    let b_init = b.path().file_stem().and_then(|s| s.to_str()) == Some("init");
+                    (a_init, a.path()).cmp(&(b_init, b.path()))
+                });
+                for entry in files {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "lua").unwrap_or(false) {
+                        let stem = path.file_stem().unwrap().to_str().unwrap();
+                        let module = if stem == "init" {
+                            format!("widgets.{}", widget_name)
+                        } else {
+                            format!("widgets.{}.{}", widget_name, stem)
+                        };
+                        let abs = fs::canonicalize(&path).unwrap().display().to_string().replace('\\', "/");
+                        entries.push((module, abs));
+                    }
+                }
             }
         }
     }
