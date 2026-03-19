@@ -1,0 +1,21 @@
+-- Dark Theme
+return {
+  name = "dark",
+  bg_primary = "#0a0a0f",
+  bg_secondary = "#12121a",
+  bg_tertiary = "#1a1a2e",
+  bg_card = "#16162a",
+  text_primary = "#ffffff",
+  text_secondary = "#a0a0b0",
+  text_muted = "#606070",
+  text_accent = "#00d4ff",
+  accent_primary = "#00d4ff",
+  accent_secondary = "#e94560",
+  accent_success = "#00ff88",
+  accent_warning = "#ffaa00",
+  accent_error = "#ff4466",
+  border_primary = "#2a2a3e",
+  border_accent = "#00d4ff",
+  card_radius = 12,
+  border_width = 1,
+}

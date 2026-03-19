@@ -21,8 +21,8 @@ use moondeck_hal::{
     Display, EnvConfig, FileSystem, Framebuffer, GestureProcessor, TouchController, WifiManager,
 };
 use moondeck_lua::{
-    embedded_widget_sources, get_default_theme, init_boot_time, set_current_theme, set_system_info,
-    set_wifi_status, LuaRuntime, ThemeColors, WidgetPlugin, EMBEDDED_INIT_LUA, EMBEDDED_PAGES_LUA,
+    get_default_theme, init_boot_time, set_current_theme, set_system_info, set_wifi_status,
+    LuaRuntime, ThemeColors, WidgetPlugin, EMBEDDED_PAGES_LUA,
 };
 
 const CONFIG_PATH: &str = "/data/config";
@@ -36,26 +36,11 @@ fn now_ms() -> u64 {
 
 fn seed_lua_config(fs: &FileSystem) {
     let _ = fs.create_dir("config");
-    let _ = fs.create_dir("config/widgets");
 
-    if !fs.exists("config/init.lua") {
-        if let Err(e) = fs.write_file("config/init.lua", EMBEDDED_INIT_LUA) {
-            warn!("Failed to seed init.lua: {}", e);
-        }
-    }
+    // Only seed user-editable entry points; everything else is embedded in the binary
     if !fs.exists("config/pages.lua") {
         if let Err(e) = fs.write_file("config/pages.lua", EMBEDDED_PAGES_LUA) {
             warn!("Failed to seed pages.lua: {}", e);
-        }
-    }
-    for (module_name, source) in embedded_widget_sources() {
-        // module_name is like "widgets.clock" -> "config/widgets/clock.lua"
-        let filename = module_name.strip_prefix("widgets.").unwrap_or(module_name);
-        let rel = format!("config/widgets/{}.lua", filename);
-        if !fs.exists(&rel) {
-            if let Err(e) = fs.write_file(&rel, source) {
-                warn!("Failed to seed {}: {}", rel, e);
-            }
         }
     }
     info!("Lua config seeded on SPIFFS");

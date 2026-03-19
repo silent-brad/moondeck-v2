@@ -8,10 +8,8 @@ use moondeck_core::ui::{Event, Gesture, WidgetContext};
 use moondeck_core::TtfFont;
 use piccolo::{Closure, Executor, Fuel, StashedTable, Table, Value};
 
-include!(concat!(env!("OUT_DIR"), "/embedded_widgets.rs"));
-
 pub fn embedded_widget_sources() -> &'static [(&'static str, &'static str)] {
-    EMBEDDED_WIDGETS
+    crate::bindings::embedded_lua_modules()
 }
 
 pub struct WidgetPlugin {
@@ -32,7 +30,7 @@ impl WidgetPlugin {
     }
 
     fn get_source(&self) -> Option<&'static str> {
-        EMBEDDED_WIDGETS
+        crate::bindings::embedded_lua_modules()
             .iter()
             .find(|(n, _)| *n == self.module)
             .map(|(_, s)| *s)

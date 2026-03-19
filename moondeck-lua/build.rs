@@ -6,52 +6,102 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
-    generate_embedded_widgets(&manifest_dir, &out_dir);
+    generate_embedded_lua(&manifest_dir, &out_dir);
     generate_embedded_themes(&manifest_dir, &out_dir);
-    generate_embedded_modules(&manifest_dir, &out_dir);
 }
 
-fn generate_embedded_widgets(manifest_dir: &str, out_dir: &str) {
-    let widgets_dir = Path::new(manifest_dir).join("../config/widgets");
+/// Scans config subdirectories (widgets/, utils/) for Lua modules.
+/// Directories with init.lua get module name from the dir path.
+/// Bare .lua files get module name from file stem.
+fn generate_embedded_lua(manifest_dir: &str, out_dir: &str) {
+    let config_dir = Path::new(manifest_dir).join("../config");
 
-    let mut code = String::from("/// Auto-generated embedded widget sources\nconst EMBEDDED_WIDGETS: &[(&str, &str)] = &[\n");
+    let mut entries: Vec<(String, String)> = Vec::new();
 
-    if let Ok(entries) = fs::read_dir(&widgets_dir) {
-        let mut widget_files: Vec<_> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map(|ext| ext == "lua")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        // Sort for deterministic output
-        widget_files.sort_by_key(|e| e.path());
-
-        for entry in widget_files {
-            let path = entry.path();
-            let name = path.file_stem().unwrap().to_str().unwrap();
-            let abs_path = fs::canonicalize(&path).unwrap();
-            let abs_path_str = abs_path.display().to_string().replace('\\', "/");
-
-            code.push_str(&format!(
-                "    (\"widgets.{}\", include_str!(\"{}\")),\n",
-                name, abs_path_str
-            ));
+    // Scan widgets/ — each subdirectory with init.lua becomes "widgets.<name>"
+    let widgets_dir = config_dir.join("widgets");
+    if let Ok(dirs) = fs::read_dir(&widgets_dir) {
+        let mut dirs: Vec<_> = dirs.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).collect();
+        dirs.sort_by_key(|e| e.path());
+        for entry in dirs {
+            let init = entry.path().join("init.lua");
+            if init.exists() {
+                let name = entry.file_name();
+                let module = format!("widgets.{}", name.to_str().unwrap());
+                let abs = fs::canonicalize(&init).unwrap().display().to_string().replace('\\', "/");
+                entries.push((module, abs));
+            }
         }
     }
 
+    // Scan utils/ — init.lua becomes "utils", other .lua files become "utils.<stem>"
+    // Sort so init.lua comes AFTER other files (its code may require sibling modules)
+    let utils_dir = config_dir.join("utils");
+    if let Ok(files) = fs::read_dir(&utils_dir) {
+        let mut files: Vec<_> = files.filter_map(|e| e.ok()).collect();
+        files.sort_by(|a, b| {
+            let a_init = a.path().file_stem().unwrap().to_str().unwrap() == "init";
+            let b_init = b.path().file_stem().unwrap().to_str().unwrap() == "init";
+            (a_init, a.path()).cmp(&(b_init, b.path()))
+        });
+        for entry in files {
+            let path = entry.path();
+            if path.extension().map(|e| e == "lua").unwrap_or(false) {
+                let stem = path.file_stem().unwrap().to_str().unwrap();
+                let module = if stem == "init" {
+                    "utils".to_string()
+                } else {
+                    format!("utils.{}", stem)
+                };
+                let abs = fs::canonicalize(&path).unwrap().display().to_string().replace('\\', "/");
+                entries.push((module, abs));
+            }
+        }
+    }
+
+    let mut code = String::from("/// Auto-generated embedded Lua module sources\nconst EMBEDDED_LUA_MODULES: &[(&str, &str)] = &[\n");
+    for (module, abs_path) in &entries {
+        code.push_str(&format!("    (\"{}\", include_str!(\"{}\")),\n", module, abs_path));
+    }
     code.push_str("];\n");
 
-    fs::write(Path::new(out_dir).join("embedded_widgets.rs"), code).unwrap();
+    fs::write(Path::new(out_dir).join("embedded_lua_modules.rs"), code).unwrap();
     println!("cargo:rerun-if-changed=../config/widgets");
+    println!("cargo:rerun-if-changed=../config/utils");
 }
 
 fn generate_embedded_themes(manifest_dir: &str, out_dir: &str) {
-    let theme_path = Path::new(manifest_dir).join("../config/theme.lua");
-    let content = fs::read_to_string(&theme_path).expect("Failed to read theme.lua");
+    let themes_dir = Path::new(manifest_dir).join("../config/themes");
+    // Read the themes/init.lua for default theme, and individual theme files for colors
+    let init_path = themes_dir.join("init.lua");
+    let init_content = fs::read_to_string(&init_path).expect("Failed to read themes/init.lua");
+
+    // Concatenate all theme files so parse_themes can extract them
+    let mut content = String::new();
+    for name in &["dark", "light", "mint", "rose_pine"] {
+        let path = themes_dir.join(format!("{}.lua", name));
+        if path.exists() {
+            let theme_src = fs::read_to_string(&path).unwrap();
+            // Wrap in themes.NAME = { ... } format for the parser
+            content.push_str(&format!("themes.{} = {{\n", name));
+            for line in theme_src.lines() {
+                let trimmed = line.trim();
+                // Skip return statement and theme-level comments
+                if trimmed.starts_with("return") || trimmed.starts_with("--") {
+                    continue;
+                }
+                // Skip opening/closing braces from the return { ... }
+                if trimmed == "{" || trimmed == "}" {
+                    continue;
+                }
+                content.push_str(line);
+                content.push('\n');
+            }
+            content.push_str("}\n\n");
+        }
+    }
+    // Append init content so parse_default_theme can find `current`
+    content.push_str(&init_content);
 
     let themes = parse_themes(&content);
     let default_theme = parse_default_theme(&content);
@@ -152,7 +202,7 @@ pub struct ThemeColors {
     code.push_str("}\n");
 
     fs::write(Path::new(out_dir).join("embedded_themes.rs"), code).unwrap();
-    println!("cargo:rerun-if-changed=../config/theme.lua");
+    println!("cargo:rerun-if-changed=../config/themes");
 }
 
 /// Simple parser to extract theme definitions from theme.lua
@@ -224,30 +274,4 @@ fn parse_default_theme(content: &str) -> String {
     "dark".to_string()
 }
 
-fn generate_embedded_modules(manifest_dir: &str, out_dir: &str) {
-    let config_dir = Path::new(manifest_dir).join("../config");
 
-    let modules = ["components.lua", "theme.lua"];
-
-    let mut code = String::from("/// Auto-generated embedded Lua module sources\nconst EMBEDDED_LUA_MODULES: &[(&str, &str)] = &[\n");
-
-    for module_file in &modules {
-        let path = config_dir.join(module_file);
-        if path.exists() {
-            let name = module_file.strip_suffix(".lua").unwrap_or(module_file);
-            let abs_path = fs::canonicalize(&path).unwrap();
-            let abs_path_str = abs_path.display().to_string().replace('\\', "/");
-
-            code.push_str(&format!(
-                "    (\"{}\", include_str!(\"{}\")),\n",
-                name, abs_path_str
-            ));
-        }
-    }
-
-    code.push_str("];\n");
-
-    fs::write(Path::new(out_dir).join("embedded_modules.rs"), code).unwrap();
-    println!("cargo:rerun-if-changed=../config/components.lua");
-    println!("cargo:rerun-if-changed=../config/theme.lua");
-}

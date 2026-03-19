@@ -1,0 +1,21 @@
+-- Rose Pine Theme
+return {
+  name = "rose_pine",
+  bg_primary = "#191724",
+  bg_secondary = "#1f1d2e",
+  bg_tertiary = "#26233a",
+  bg_card = "#1f1d2e",
+  text_primary = "#e0def4",
+  text_secondary = "#908caa",
+  text_muted = "#6e6a86",
+  text_accent = "#ebbcba",
+  accent_primary = "#ebbcba",
+  accent_secondary = "#31748f",
+  accent_success = "#9ccfd8",
+  accent_warning = "#f6c177",
+  accent_error = "#eb6f92",
+  border_primary = "#26233a",
+  border_accent = "#ebbcba",
+  card_radius = 12,
+  border_width = 1,
+}

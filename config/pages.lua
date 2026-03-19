@@ -1,5 +1,6 @@
 -- Moondeck Pages Configuration
--- Define your display pages and widgets here
+-- This is the main configuration file for your Moondeck dashboard.
+-- Define your display pages and widgets here.
 --
 -- Layout Templates Available:
 --   full          - Single full-screen widget
@@ -11,6 +12,17 @@
 --   dashboard     - Main area + sidebar widgets
 --   cards_4       - Four equal cards in a row
 
+local sysinfo = require("widgets.sysinfo")
+local weather = require("widgets.weather")
+local quote = require("widgets.quote")
+local crypto = require("widgets.crypto")
+local clock = require("widgets.clock")
+local status = require("widgets.status")
+local bible = require("widgets.bible")
+local rss = require("widgets.rss")
+local stocks = require("widgets.stocks")
+local github = require("widgets.github")
+
 return {
   pages = {
     {
@@ -19,25 +31,25 @@ return {
       layout = "quad",
       widgets = {
         {
-          module = "widgets.sysinfo",
+          widget = sysinfo,
           slot = 1,
           update_interval = 1000,
           opts = {},
         },
         {
-          module = "widgets.weather",
+          widget = weather,
           slot = 2,
           update_interval = 300000,
           opts = {},
         },
         {
-          module = "widgets.quote",
+          widget = quote,
           slot = 3,
           update_interval = 60000,
           opts = {},
         },
         {
-          module = "widgets.crypto",
+          widget = crypto,
           slot = 4,
           update_interval = 60000,
           opts = {
@@ -53,7 +65,7 @@ return {
       layout = "half_half",
       widgets = {
         {
-          module = "widgets.clock",
+          widget = clock,
           slot = 1,
           update_interval = 1000,
           opts = {
@@ -64,7 +76,7 @@ return {
           },
         },
         {
-          module = "widgets.status",
+          widget = status,
           slot = 2,
           update_interval = 1000,
           opts = {},
@@ -78,13 +90,13 @@ return {
       layout = "half_half",
       widgets = {
         {
-          module = "widgets.bible",
+          widget = bible,
           slot = 1,
           update_interval = 3600000,
           opts = {},
         },
         {
-          module = "widgets.rss",
+          widget = rss,
           slot = 2,
           update_interval = 300000,
           opts = {},
@@ -98,7 +110,7 @@ return {
       layout = "full",
       widgets = {
         {
-          module = "widgets.stocks",
+          widget = stocks,
           slot = 1,
           update_interval = 300000,
           opts = {
@@ -114,7 +126,7 @@ return {
       layout = "full",
       widgets = {
         {
-          module = "widgets.github",
+          widget = github,
           slot = 1,
           update_interval = 3600000,
           opts = {},

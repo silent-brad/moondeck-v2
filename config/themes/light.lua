@@ -1,0 +1,21 @@
+-- Light Theme
+return {
+  name = "light",
+  bg_primary = "#ffffff",
+  bg_secondary = "#f5f5f7",
+  bg_tertiary = "#e8e8ec",
+  bg_card = "#ffffff",
+  text_primary = "#1a1a1a",
+  text_secondary = "#4a4a4a",
+  text_muted = "#8a8a8a",
+  text_accent = "#0066cc",
+  accent_primary = "#0066cc",
+  accent_secondary = "#cc3366",
+  accent_success = "#00aa55",
+  accent_warning = "#cc8800",
+  accent_error = "#cc2244",
+  border_primary = "#d0d0d8",
+  border_accent = "#0066cc",
+  card_radius = 12,
+  border_width = 1,
+}

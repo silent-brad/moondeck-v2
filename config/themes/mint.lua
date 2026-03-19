@@ -1,0 +1,21 @@
+-- Mint Theme
+return {
+  name = "mint",
+  bg_primary = "#0d1f1a",
+  bg_secondary = "#122a22",
+  bg_tertiary = "#1a3830",
+  bg_card = "#15302a",
+  text_primary = "#e8fff4",
+  text_secondary = "#a0d4c0",
+  text_muted = "#608070",
+  text_accent = "#00ffaa",
+  accent_primary = "#00ffaa",
+  accent_secondary = "#00d4ff",
+  accent_success = "#00ff88",
+  accent_warning = "#ffcc00",
+  accent_error = "#ff6666",
+  border_primary = "#2a4a40",
+  border_accent = "#00ffaa",
+  card_radius = 12,
+  border_width = 1,
+}

@@ -14,8 +14,8 @@ pub use gfx::{
     get_draw_commands, get_draw_offset, register_gfx, set_draw_offset, DrawCommand, LuaDrawCommands,
 };
 pub use modules::{
-    get_current_theme, get_default_theme, get_theme_bg_primary, register_modules,
-    set_current_theme, ThemeAccessor,
+    embedded_lua_modules, get_current_theme, get_default_theme, get_theme_bg_primary,
+    register_modules, set_current_theme, ThemeAccessor,
 };
 pub use net::register_net;
 pub use system::{

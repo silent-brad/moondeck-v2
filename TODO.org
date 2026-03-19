@@ -25,14 +25,12 @@
   NOTE: Reduced rust code by 24%
 
 * DONE Brush up loading screen
-
+* DONE Restructure config
+  NOTE: Requiring Lua files will also give the ability to import them from GitHub.
 * TODO Add more widgets
 * TODO Handle layouts card/component sizing
   Make more compact?
-
 * TODO Revise design
 
-* TODO Revise/simplify moondeck-lua/config structure
-
-* TODO Update docs
+* DONE Update docs
 

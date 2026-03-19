@@ -5,7 +5,7 @@ use piccolo::{
 use std::sync::RwLock;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_themes.rs"));
-include!(concat!(env!("OUT_DIR"), "/embedded_modules.rs"));
+include!(concat!(env!("OUT_DIR"), "/embedded_lua_modules.rs"));
 
 static CURRENT_THEME: RwLock<String> = RwLock::new(String::new());
 
@@ -116,11 +116,8 @@ fn create_theme_colors_table<'gc>(
     Ok(colors)
 }
 
-fn get_lua_module_source(name: &str) -> Option<&'static str> {
+pub fn embedded_lua_modules() -> &'static [(&'static str, &'static str)] {
     EMBEDDED_LUA_MODULES
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, s)| *s)
 }
 
 fn load_lua_module<'gc>(
@@ -202,26 +199,30 @@ pub fn register_modules(lua: &mut Lua) -> Result<()> {
         )?;
         ctx.set_global("__theme_module", theme_table)?;
 
-        // Layout stub
-        let layout = Table::new(&ctx);
-        layout.set(
-            ctx,
-            "grid",
-            Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-                stack.replace(ctx, Table::new(&ctx));
-                Ok(CallbackReturn::Return)
-            }),
-        )?;
-        ctx.set_global("__layout_module", layout)?;
+        // Pre-load utils modules from embedded sources
+        // Components needs theme global set first, so use bootstrap require
+        setup_require(ctx, false)?;
 
-        // Load components module
-        if let Some(src) = get_lua_module_source("components") {
-            log::info!("Loading components.lua ({} bytes)", src.len());
-            setup_require(ctx, false)?;
-            if let Ok(m) = load_lua_module(ctx, "components", src) {
-                ctx.set_global("__components_module", m)?;
+        for &(name, src) in EMBEDDED_LUA_MODULES {
+            // Skip widget modules — those are loaded on demand by WidgetPlugin
+            if name.starts_with("widgets.") {
+                continue;
+            }
+            if let Ok(m) = load_lua_module(ctx, name, src) {
                 if let Value::Table(loaded) = ctx.globals().get(ctx, "__loaded_modules") {
-                    let _ = loaded.set(ctx, "components", m);
+                    let _ = loaded.set(ctx, ctx.intern(name.as_bytes()), m);
+                }
+                // Alias utils.components as "components" and utils.layout as "layout"
+                if name == "utils.components" {
+                    ctx.set_global("__components_module", m)?;
+                    if let Value::Table(loaded) = ctx.globals().get(ctx, "__loaded_modules") {
+                        let _ = loaded.set(ctx, "components", m);
+                    }
+                } else if name == "utils.layout" {
+                    ctx.set_global("__layout_module", m)?;
+                    if let Value::Table(loaded) = ctx.globals().get(ctx, "__loaded_modules") {
+                        let _ = loaded.set(ctx, "layout", m);
+                    }
                 }
             }
         }
@@ -244,12 +245,35 @@ fn setup_require<'gc>(
             let name_str = name.to_str().unwrap_or("");
 
             let result = match name_str {
-                "theme" => ctx.globals().get(ctx, "__theme_module"),
-                "layout" => ctx.globals().get(ctx, "__layout_module"),
-                "components" if final_version => ctx.globals().get(ctx, "__components_module"),
+                "theme" | "themes" => ctx.globals().get(ctx, "__theme_module"),
+                "layout" | "utils.layout" => ctx.globals().get(ctx, "__layout_module"),
+                "components" | "utils.components" if final_version => {
+                    ctx.globals().get(ctx, "__components_module")
+                }
                 _ => {
-                    if let Value::Table(loaded) = ctx.globals().get(ctx, "__loaded_modules") {
+                    // Check cached modules first
+                    let cached = if let Value::Table(loaded) =
+                        ctx.globals().get(ctx, "__loaded_modules")
+                    {
                         loaded.get(ctx, ctx.intern(name_str.as_bytes()))
+                    } else {
+                        Value::Nil
+                    };
+
+                    if !matches!(cached, Value::Nil) {
+                        cached
+                    } else if name_str.starts_with("widgets.") {
+                        // Create a lightweight stub for widget modules
+                        let stub = Table::new(&ctx);
+                        stub.set(ctx, "_module", ctx.intern(name_str.as_bytes()))?;
+                        // Cache it
+                        if let Value::Table(loaded) =
+                            ctx.globals().get(ctx, "__loaded_modules")
+                        {
+                            let _ =
+                                loaded.set(ctx, ctx.intern(name_str.as_bytes()), stub);
+                        }
+                        Value::Table(stub)
                     } else {
                         Value::Nil
                     }

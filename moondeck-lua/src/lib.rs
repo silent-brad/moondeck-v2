@@ -7,4 +7,4 @@ pub use bindings::{
     DrawCommand, ThemeAccessor as ThemeColors,
 };
 pub use plugin::{embedded_widget_sources, WidgetPlugin};
-pub use runtime::{LuaRuntime, EMBEDDED_INIT_LUA, EMBEDDED_PAGES_LUA};
+pub use runtime::{LuaRuntime, EMBEDDED_PAGES_LUA};

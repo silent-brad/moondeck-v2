@@ -10,15 +10,15 @@
 
 * Files
 
-| File             | Purpose                                   |
-|------------------+-------------------------------------------|
-| ~.env~           | API keys, WiFi credentials, and settings  |
-| ~pages.lua~      | Page layouts and widget configuration     |
-| ~theme.lua~      | Color themes and typography settings      |
-| ~layout.lua~     | Grid-based layout system                  |
-| ~components.lua~ | Reusable UI components                    |
-| ~init.lua~       | Initialization script (loads theme, etc.) |
-| ~widgets/~       | Widget implementations                    |
+| File/Dir          | Purpose                                        |
+|-------------------+------------------------------------------------|
+| ~.env~            | API keys, WiFi credentials, and settings       |
+| ~pages.lua~       | Main config: page layouts and widget selection |
+| ~themes/~         | Color themes (dark, light, mint, rose_pine)    |
+| ~themes/init.lua~ | Theme system with typography, spacing, grid    |
+| ~utils/~          | Shared utilities (components, layout)          |
+| ~utils/init.lua~  | Initialization (loads theme, config globals)   |
+| ~widgets/~        | Widget implementations (each in own directory) |
 
 * Environment Variables
 
@@ -84,24 +84,30 @@ Pages can use predefined layouts. Set ~layout~ on a page and use ~slot~ on widge
 * Example
 
 #+begin_src lua
+local clock = require("widgets.clock")
+local weather = require("widgets.weather")
+local crypto = require("widgets.crypto")
+
 {
     id = "dashboard",
+    title = "Dashboard",
     layout = "main_sidebar",
     widgets = {
-        { module = "widgets.clock", slot = 1 },    -- Main area
-        { module = "widgets.weather", slot = 2 },  -- Top right
-        { module = "widgets.crypto", slot = 3 },   -- Bottom right
+        { widget = clock,   slot = 1, update_interval = 1000 },    -- Main area
+        { widget = weather, slot = 2, update_interval = 300000 },  -- Top right
+        { widget = crypto,  slot = 3, update_interval = 60000 },   -- Bottom right
     },
 }
 #+end_src
 
 * Themes
 
-Three built-in themes are available:
+Four built-in themes are available:
 
 - /dark/ - Dark backgrounds with cyan accents (default)
 - /light/ - Light backgrounds with blue accents  
 - /mint/ - Dark green theme with mint accents
+- /rose_pine/ - Rosé Pine color palette
 
 Set via ~THEME~ environment variable or programmatically:
 
@@ -111,7 +117,7 @@ theme:set("mint")
 
 * Creating Custom Widgets
 
-Widgets are Lua modules in ~widgets/~. A widget must export:
+Widgets are Lua modules in ~widgets/{name}/init.lua~. A widget must export:
 
 #+begin_src lua
 local M = {}
@@ -197,7 +203,7 @@ function M.fetch_data(state)
 end
 #+end_src
 
-## Available Widgets
+** Available Widgets
 
 | Widget    | Description                 | Required Env                       |
 |-----------+-----------------------------+------------------------------------|
@@ -210,3 +216,4 @@ end
 | ~quote~   | Inspirational quotes        | -                                  |
 | ~sysinfo~ | System information          | -                                  |
 | ~status~  | WiFi and device status      | -                                  |
+| ~github~  | GitHub contribution heatmap | -                                  |

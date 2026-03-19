@@ -4,7 +4,6 @@ use moondeck_core::ui::{Page, WidgetInstance};
 use moondeck_hal::EnvConfig;
 use piccolo::{Closure, Executor, Fuel, Lua, StashedExecutor, Value};
 
-pub const EMBEDDED_INIT_LUA: &str = include_str!("../../config/init.lua");
 pub const EMBEDDED_PAGES_LUA: &str = include_str!("../../config/pages.lua");
 
 pub struct LuaRuntime {
@@ -29,21 +28,21 @@ impl LuaRuntime {
 
     pub fn init(&mut self, env: &EnvConfig) -> Result<()> {
         bindings::register_all(&mut self.lua, env).context("Failed to register Lua bindings")?;
-        let init_src = self
-            .config_path
-            .as_ref()
-            .and_then(|p| std::fs::read_to_string(format!("{}/init.lua", p)).ok())
-            .unwrap_or_else(|| EMBEDDED_INIT_LUA.to_string());
-        self.load_script(&init_src)?;
-        self.run_pending().context("Failed to run init.lua")
+        self.load_script("utils = require(\"utils\")")?;
+        self.run_pending().context("Failed to initialize utils")
     }
 
     pub fn read_widget_source(&self, module: &str) -> Option<String> {
         let base = self.config_path.as_ref()?;
-        // module names are like "widgets.clock" -> "widgets/clock.lua"
+        // module names are like "widgets.clock" -> "widgets/clock/init.lua"
         let rel_path = module.replace('.', "/");
-        let path = format!("{}/{}.lua", base, rel_path);
-        std::fs::read_to_string(path).ok()
+        let dir_path = format!("{}/{}/init.lua", base, rel_path);
+        std::fs::read_to_string(&dir_path)
+            .or_else(|_| {
+                // Fallback to flat file for compatibility
+                std::fs::read_to_string(format!("{}/{}.lua", base, rel_path))
+            })
+            .ok()
     }
 
     pub fn load_script(&mut self, script: &str) -> Result<()> {
@@ -78,7 +77,35 @@ impl LuaRuntime {
             .as_ref()
             .and_then(|p| std::fs::read_to_string(format!("{}/pages.lua", p)).ok())
             .unwrap_or_else(|| EMBEDDED_PAGES_LUA.to_string());
-        parse_pages_config(&lua_src)
+
+        // Run pages.lua in the main runtime so require() works
+        let stashed = self.lua.try_enter(|ctx| {
+            let closure = Closure::load(ctx, Some("pages.lua".into()), lua_src.as_bytes())
+                .map_err(|e| anyhow::anyhow!("Compile error: {:?}", e))?;
+            Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
+        })?;
+
+        let json_string: String = self.lua.enter(|ctx| {
+            let exec = ctx.fetch(&stashed);
+            let mut fuel = Fuel::with(1000000);
+            while !exec.step(ctx, &mut fuel) {
+                if fuel.remaining() <= 0 {
+                    break;
+                }
+            }
+            match exec.take_result::<Value>(ctx) {
+                Ok(Ok(Value::Table(t))) => {
+                    serde_json::to_string(&table_to_json(ctx, t)).unwrap_or_default()
+                }
+                _ => String::new(),
+            }
+        });
+
+        if json_string.is_empty() {
+            return Err(anyhow::anyhow!("pages.lua did not return valid table"));
+        }
+
+        parse_pages_json(&json_string)
     }
 
     pub fn lua(&mut self) -> &mut Lua {
@@ -119,8 +146,16 @@ struct PageConfig {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+struct WidgetRef {
+    _module: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
 struct WidgetConfig {
-    module: String,
+    #[serde(default)]
+    module: Option<String>,
+    #[serde(default)]
+    widget: Option<WidgetRef>,
     #[serde(default)]
     slot: usize,
     #[serde(default)]
@@ -133,6 +168,14 @@ struct WidgetConfig {
     h: u32,
     update_interval: Option<u64>,
     opts: Option<serde_json::Value>,
+}
+
+impl WidgetConfig {
+    fn module_name(&self) -> Option<&str> {
+        self.module
+            .as_deref()
+            .or(self.widget.as_ref().map(|w| w._module.as_str()))
+    }
 }
 
 fn default_dim() -> u32 {
@@ -161,35 +204,8 @@ fn slot_bounds(col: i32, span: i32, row: i32, row_span: i32, rows: i32) -> (i32,
     (x, y, w as u32, h as u32)
 }
 
-fn parse_pages_config(lua_src: &str) -> Result<Vec<Page>> {
-    let mut lua = Lua::full();
-    let stashed: StashedExecutor = lua.try_enter(|ctx| {
-        let closure = Closure::load(ctx, Some("pages.lua".into()), lua_src.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Compile error: {:?}", e))?;
-        Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
-    })?;
-
-    let json_string: String = lua.enter(|ctx| {
-        let exec = ctx.fetch(&stashed);
-        let mut fuel = Fuel::with(1000000);
-        while !exec.step(ctx, &mut fuel) {
-            if fuel.remaining() <= 0 {
-                break;
-            }
-        }
-        match exec.take_result::<Value>(ctx) {
-            Ok(Ok(Value::Table(t))) => {
-                serde_json::to_string(&table_to_json(ctx, t)).unwrap_or_default()
-            }
-            _ => String::new(),
-        }
-    });
-
-    if json_string.is_empty() {
-        return Err(anyhow::anyhow!("pages.lua did not return valid table"));
-    }
-
-    let config: PagesConfig = serde_json::from_str(&json_string)
+fn parse_pages_json(json_string: &str) -> Result<Vec<Page>> {
+    let config: PagesConfig = serde_json::from_str(json_string)
         .with_context(|| format!("Parse error: {}", json_string))?;
 
     Ok(config
@@ -200,13 +216,21 @@ fn parse_pages_config(lua_src: &str) -> Result<Vec<Page>> {
             let slots = p.layout.as_deref().map(get_layout_slots);
 
             for w in p.widgets {
+                let module = match w.module_name() {
+                    Some(m) => m.to_string(),
+                    None => {
+                        log::warn!("Widget missing module/widget reference, skipping");
+                        continue;
+                    }
+                };
+
                 let (x, y, width, height) = slots
                     .as_ref()
                     .and_then(|s| s.get(w.slot.saturating_sub(1).max(0)))
                     .map(|&(c, sp, r, rs)| slot_bounds(c, sp, r, rs, 2))
                     .unwrap_or((w.x, w.y, w.w, w.h));
 
-                let mut widget = WidgetInstance::new(&w.module, x, y, width, height)
+                let mut widget = WidgetInstance::new(&module, x, y, width, height)
                     .with_update_interval(w.update_interval.unwrap_or(1000));
                 if let Some(opts) = w.opts {
                     widget.context.opts = opts
