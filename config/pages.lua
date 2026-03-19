@@ -33,25 +33,21 @@ return {
       widgets = {
         {
           widget = sysinfo,
-          slot = 1,
           update_interval = 1000,
           opts = {},
         },
         {
           widget = weather,
-          slot = 2,
           update_interval = 300000,
           opts = {},
         },
         {
           widget = quote,
-          slot = 3,
           update_interval = 60000,
           opts = {},
         },
         {
           widget = crypto,
-          slot = 4,
           update_interval = 60000,
           opts = {
             coins = { "bitcoin", "ethereum", "solana", "monero" },
@@ -67,7 +63,6 @@ return {
       widgets = {
         {
           widget = chess,
-          slot = 1,
           update_interval = 300000,
           opts = {
             username = env.get("CHESS_USERNAME"),
@@ -75,13 +70,11 @@ return {
         },
         {
           widget = status,
-          slot = 2,
           update_interval = 1000,
           opts = {},
         },
         {
           widget = clock,
-          slot = 3,
           update_interval = 1000,
           opts = {
             timezone = env.get("TIMEZONE"),
@@ -100,13 +93,11 @@ return {
       widgets = {
         {
           widget = bible,
-          slot = 1,
           update_interval = 3600000,
           opts = {},
         },
         {
           widget = rss,
-          slot = 2,
           update_interval = 300000,
           opts = {},
         },
@@ -120,7 +111,6 @@ return {
       widgets = {
         {
           widget = stocks,
-          slot = 1,
           update_interval = 300000,
           opts = {
             symbols = { "AAPL", "GOOGL", "PLTR", "TSLA" },
@@ -136,7 +126,6 @@ return {
       widgets = {
         {
           widget = github,
-          slot = 1,
           update_interval = 3600000,
           opts = {},
         },

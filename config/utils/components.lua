@@ -17,10 +17,10 @@ function Components.card(gfx, x, y, w, h, opts)
   opts = opts or {}
   local th = theme:get()
 
-  local bg_page = th.bg_primary or "#0a0a0f"
-  local bg_card = th.bg_card or "#16162a"
+  local bg_page = th.bg_primary
+  local bg_card = th.bg_card
   local radius = th.card_radius or 12
-  local border = th.border_primary or "#2a2a3e"
+  local border = th.border_primary
   local border_width = th.border_width or 1
   local opacity = opts.opacity or 0.7
   local shadow_layers = opts.shadow or 3

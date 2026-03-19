@@ -152,6 +152,15 @@ fn main() -> Result<()> {
     init_boot_time();
     set_current_theme(get_default_theme());
 
+    // Apply theme from embedded .env early so loading screens use the correct theme
+    let embedded_env = include_str!("../../.env");
+    if !embedded_env.is_empty() {
+        let early_env = EnvConfig::load_from_str(embedded_env);
+        if let Some(theme) = early_env.get("THEME") {
+            set_current_theme(theme);
+        }
+    }
+
     let peripherals = Peripherals::take().context("Failed to take peripherals")?;
     let sysloop = EspSystemEventLoop::take().context("Failed to get event loop")?;
     let nvs = EspDefaultNvsPartition::take().ok();

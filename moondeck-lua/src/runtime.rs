@@ -156,8 +156,6 @@ struct WidgetConfig {
     #[serde(default)]
     widget: Option<WidgetRef>,
     #[serde(default)]
-    slot: usize,
-    #[serde(default)]
     x: i32,
     #[serde(default)]
     y: i32,
@@ -215,7 +213,7 @@ fn parse_pages_json(json_string: &str) -> Result<Vec<Page>> {
             let mut page = Page::new(&p.id, p.title.as_deref().unwrap_or(&p.id));
             let slots = p.layout.as_deref().map(get_layout_slots);
 
-            for w in p.widgets {
+            for (idx, w) in p.widgets.into_iter().enumerate() {
                 let module = match w.module_name() {
                     Some(m) => m.to_string(),
                     None => {
@@ -226,7 +224,7 @@ fn parse_pages_json(json_string: &str) -> Result<Vec<Page>> {
 
                 let (x, y, width, height) = slots
                     .as_ref()
-                    .and_then(|s| s.get(w.slot.saturating_sub(1).max(0)))
+                    .and_then(|s| s.get(idx))
                     .map(|&(c, sp, r, rs)| slot_bounds(c, sp, r, rs, 2))
                     .unwrap_or((w.x, w.y, w.w, w.h));
 
