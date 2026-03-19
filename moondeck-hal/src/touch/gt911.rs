@@ -43,8 +43,8 @@ impl<'d> TouchController<'d> {
 
         // Use slower I2C speed for better compatibility
         let config = I2cConfig::new().baudrate(Hertz(100_000));
-        let i2c_driver = I2cDriver::new(i2c, sda, scl, &config)
-            .context("Failed to initialize I2C")?;
+        let i2c_driver =
+            I2cDriver::new(i2c, sda, scl, &config).context("Failed to initialize I2C")?;
 
         let mut controller = Self {
             i2c: i2c_driver,
@@ -88,7 +88,10 @@ impl<'d> TouchController<'d> {
             anyhow::bail!("GT911 not found at either address (0x5D or 0x14)");
         }
 
-        log::info!("GT911 touch controller initialized at address 0x{:02X}", controller.address);
+        log::info!(
+            "GT911 touch controller initialized at address 0x{:02X}",
+            controller.address
+        );
 
         Ok(controller)
     }
@@ -99,7 +102,8 @@ impl<'d> TouchController<'d> {
         buf[1] = (reg & 0xFF) as u8;
         buf[2..].copy_from_slice(data);
 
-        self.i2c.write(self.address, &buf, 100)
+        self.i2c
+            .write(self.address, &buf, 100)
             .map_err(|e| anyhow::anyhow!("I2C write error: {:?}", e))?;
         Ok(())
     }
@@ -108,9 +112,11 @@ impl<'d> TouchController<'d> {
         let reg_bytes = [(reg >> 8) as u8, (reg & 0xFF) as u8];
         let mut buf = vec![0u8; len];
 
-        self.i2c.write(self.address, &reg_bytes, 100)
+        self.i2c
+            .write(self.address, &reg_bytes, 100)
             .map_err(|e| anyhow::anyhow!("I2C write error: {:?}", e))?;
-        self.i2c.read(self.address, &mut buf, 100)
+        self.i2c
+            .read(self.address, &mut buf, 100)
             .map_err(|e| anyhow::anyhow!("I2C read error: {:?}", e))?;
 
         Ok(buf)
@@ -129,8 +135,13 @@ impl<'d> TouchController<'d> {
             // No touch - emit Ended if we had an active touch
             if self.last_touch.take().is_some() {
                 // Return the last known position (most recent position before lift)
-                log::info!("Touch ended: start=({},{}) last=({},{})", 
-                    self.start_x, self.start_y, self.last_x, self.last_y);
+                log::info!(
+                    "Touch ended: start=({},{}) last=({},{})",
+                    self.start_x,
+                    self.start_y,
+                    self.last_x,
+                    self.last_y
+                );
                 return Ok(Some(TouchEvent {
                     x: self.last_x,
                     y: self.last_y,
@@ -155,14 +166,22 @@ impl<'d> TouchController<'d> {
 
         if self.last_touch.is_some() {
             // Already tracking - this is a move
-            let event = TouchEvent { x, y, phase: TouchPhase::Moved };
+            let event = TouchEvent {
+                x,
+                y,
+                phase: TouchPhase::Moved,
+            };
             self.last_touch = Some(event);
             Ok(Some(event))
         } else {
             // New touch - record start position
             self.start_x = x;
             self.start_y = y;
-            let event = TouchEvent { x, y, phase: TouchPhase::Started };
+            let event = TouchEvent {
+                x,
+                y,
+                phase: TouchPhase::Started,
+            };
             self.last_touch = Some(event);
             Ok(Some(event))
         }

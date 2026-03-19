@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
+use esp_idf_hal::modem::Modem;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::sntp::{EspSntp, SntpConf, SyncStatus};
 use esp_idf_svc::wifi::{AuthMethod, BlockingWifi, ClientConfiguration, Configuration, EspWifi};
-use esp_idf_hal::modem::Modem;
 use std::net::Ipv4Addr;
 use std::time::Duration;
 
@@ -26,11 +26,11 @@ impl<'d> WifiManager<'d> {
         sysloop: EspSystemEventLoop,
         nvs: Option<EspDefaultNvsPartition>,
     ) -> Result<Self> {
-        let wifi = EspWifi::new(modem, sysloop.clone(), nvs)
-            .context("Failed to create WiFi driver")?;
+        let wifi =
+            EspWifi::new(modem, sysloop.clone(), nvs).context("Failed to create WiFi driver")?;
 
-        let blocking_wifi = BlockingWifi::wrap(wifi, sysloop)
-            .context("Failed to create blocking WiFi")?;
+        let blocking_wifi =
+            BlockingWifi::wrap(wifi, sysloop).context("Failed to create blocking WiFi")?;
 
         Ok(Self {
             wifi: blocking_wifi,
@@ -51,27 +51,39 @@ impl<'d> WifiManager<'d> {
         };
 
         let config = Configuration::Client(ClientConfiguration {
-            ssid: ssid.try_into().map_err(|_| anyhow::anyhow!("SSID too long"))?,
-            password: password.try_into().map_err(|_| anyhow::anyhow!("Password too long"))?,
+            ssid: ssid
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("SSID too long"))?,
+            password: password
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Password too long"))?,
             auth_method,
             ..Default::default()
         });
 
-        self.wifi.set_configuration(&config)
+        self.wifi
+            .set_configuration(&config)
             .context("Failed to set WiFi configuration")?;
 
-        self.wifi.start()
-            .context("Failed to start WiFi")?;
+        self.wifi.start().context("Failed to start WiFi")?;
 
-        log::info!("WiFi started, connecting to '{}' with auth {:?}...", ssid, auth_method);
+        log::info!(
+            "WiFi started, connecting to '{}' with auth {:?}...",
+            ssid,
+            auth_method
+        );
 
-        self.wifi.connect()
-            .context("Failed to connect to WiFi")?;
+        self.wifi.connect().context("Failed to connect to WiFi")?;
 
-        self.wifi.wait_netif_up()
+        self.wifi
+            .wait_netif_up()
             .context("Failed to wait for network interface")?;
 
-        let ip_info = self.wifi.wifi().sta_netif().get_ip_info()
+        let ip_info = self
+            .wifi
+            .wifi()
+            .sta_netif()
+            .get_ip_info()
             .context("Failed to get IP info")?;
 
         log::info!("WiFi connected! IP: {}", ip_info.ip);
@@ -115,7 +127,8 @@ impl<'d> WifiManager<'d> {
     }
 
     pub fn disconnect(&mut self) -> Result<()> {
-        self.wifi.disconnect()
+        self.wifi
+            .disconnect()
             .context("Failed to disconnect WiFi")?;
         Ok(())
     }
@@ -127,7 +140,12 @@ impl<'d> WifiManager<'d> {
     pub fn status(&self) -> WifiStatus {
         let connected = self.is_connected();
         let ip = if connected {
-            self.wifi.wifi().sta_netif().get_ip_info().ok().map(|info| info.ip)
+            self.wifi
+                .wifi()
+                .sta_netif()
+                .get_ip_info()
+                .ok()
+                .map(|info| info.ip)
         } else {
             None
         };
@@ -143,16 +161,20 @@ impl<'d> WifiManager<'d> {
         WifiStatus {
             connected,
             ip,
-            ssid: if connected { Some(self.ssid.clone()) } else { None },
+            ssid: if connected {
+                Some(self.ssid.clone())
+            } else {
+                None
+            },
             rssi,
         }
     }
 
     pub fn reconnect(&mut self) -> Result<()> {
         if !self.is_connected() {
-            self.wifi.connect()
-                .context("Failed to reconnect")?;
-            self.wifi.wait_netif_up()
+            self.wifi.connect().context("Failed to reconnect")?;
+            self.wifi
+                .wait_netif_up()
                 .context("Failed to wait for network interface")?;
         }
         Ok(())

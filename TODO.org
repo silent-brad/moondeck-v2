@@ -1,44 +1,38 @@
 #+TITLE: TODO List for MoonDeck
 
-* DONE
+* DONE In ~moondeck-core/src/color.rs~ (and other places which reference it), remove color consts and simply specify rgb values
 
-** DONE In ~moondeck-core/src/color.rs~ (and other places which reference it), remove color consts and simply specify rgb values
+* DONE In ~moondeck-core/build.rs~ and ~moondeck-core/src/ttf-font.rs~, reduce LOC/make cleaner
 
-** DONE In ~moondeck-core/build.rs~ and ~moondeck-core/src/ttf-font.rs~, reduce LOC/make cleaner
-
-** DONE Make widgets work correctly/be simple to configure
+* DONE Make widgets work correctly/be simple to configure
   Revise update function in `moondeck-lua/src/plugins.rs`
 
-** DONE Revise flake to be cleaner
+* DONE Revise flake to be cleaner
 
-*** DONE Sysinfo
-*** DONE Weather
-*** DONE Quote
-*** DONE Crypto
-*** DONE Stocks
-*** DONE Bible
-*** DONE RSS
-*** DONE Status
-*** DONE Clock
+** DONE Sysinfo
+** DONE Weather
+** DONE Quote
+** DONE Crypto
+** DONE Stocks
+** DONE Bible
+** DONE RSS
+** DONE Status
+** DONE Clock
+** DONE GitHub
 
-** DONE Reduce LOC/dependencies
+* DONE Reduce LOC/dependencies
   Use macros/etc
   NOTE: Reduced rust code by 24%
 
+* DONE Brush up loading screen
 
-* TODO
-
-** TODO Add more widgets
-  Add GitHub heatmap
-
-** TODO Handle layouts card/component sizing
+* TODO Add more widgets
+* TODO Handle layouts card/component sizing
   Make more compact?
 
-** TODO Brush up loading screen
+* TODO Revise design
 
-** TODO Revise design
+* TODO Revise/simplify moondeck-lua/config structure
 
-** TODO Revise/simplify moondeck-lua/config structure
-
-** TODO Update docs
+* TODO Update docs
 

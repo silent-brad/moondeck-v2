@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
-use esp_idf_svc::io::{Write};
+use esp_idf_svc::io::Write;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -39,16 +39,15 @@ impl HttpClient {
     pub fn get_with_headers(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse> {
         let config = self.create_config();
 
-        let mut client = EspHttpConnection::new(&config)
-            .context("Failed to create HTTP connection")?;
+        let mut client =
+            EspHttpConnection::new(&config).context("Failed to create HTTP connection")?;
 
-        client.initiate_request(
-            esp_idf_svc::http::Method::Get,
-            url,
-            headers,
-        ).context("Failed to initiate request")?;
+        client
+            .initiate_request(esp_idf_svc::http::Method::Get, url, headers)
+            .context("Failed to initiate request")?;
 
-        client.initiate_response()
+        client
+            .initiate_response()
             .context("Failed to initiate response")?;
 
         let status = client.status();
@@ -76,11 +75,17 @@ impl HttpClient {
         self.post_with_headers(url, body, content_type, &[])
     }
 
-    pub fn post_with_headers(&self, url: &str, body: &str, content_type: &str, extra_headers: &[(&str, &str)]) -> Result<HttpResponse> {
+    pub fn post_with_headers(
+        &self,
+        url: &str,
+        body: &str,
+        content_type: &str,
+        extra_headers: &[(&str, &str)],
+    ) -> Result<HttpResponse> {
         let config = self.create_config();
 
-        let mut client = EspHttpConnection::new(&config)
-            .context("Failed to create HTTP connection")?;
+        let mut client =
+            EspHttpConnection::new(&config).context("Failed to create HTTP connection")?;
 
         let content_len = body.len().to_string();
         let mut headers: Vec<(&str, &str)> = vec![
@@ -89,18 +94,18 @@ impl HttpClient {
         ];
         headers.extend_from_slice(extra_headers);
 
-        client.initiate_request(
-            esp_idf_svc::http::Method::Post,
-            url,
-            &headers,
-        ).context("Failed to initiate request")?;
+        client
+            .initiate_request(esp_idf_svc::http::Method::Post, url, &headers)
+            .context("Failed to initiate request")?;
 
-        client.write_all(body.as_bytes())
+        client
+            .write_all(body.as_bytes())
             .context("Failed to write body")?;
 
         client.flush().context("Failed to flush")?;
 
-        client.initiate_response()
+        client
+            .initiate_response()
             .context("Failed to initiate response")?;
 
         let status = client.status();
@@ -124,8 +129,7 @@ impl HttpClient {
 
     pub fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T> {
         let response = self.get(url)?;
-        serde_json::from_str(&response.body)
-            .context("Failed to parse JSON response")
+        serde_json::from_str(&response.body).context("Failed to parse JSON response")
     }
 
     pub fn post_json<T: Serialize, R: for<'de> Deserialize<'de>>(
@@ -135,8 +139,7 @@ impl HttpClient {
     ) -> Result<R> {
         let body_str = serde_json::to_string(body)?;
         let response = self.post(url, &body_str, "application/json")?;
-        serde_json::from_str(&response.body)
-            .context("Failed to parse JSON response")
+        serde_json::from_str(&response.body).context("Failed to parse JSON response")
     }
 }
 

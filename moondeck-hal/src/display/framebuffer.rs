@@ -22,20 +22,12 @@ impl Framebuffer {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.buffer.as_ptr() as *const u8,
-                FRAMEBUFFER_SIZE,
-            )
-        }
+        unsafe { std::slice::from_raw_parts(self.buffer.as_ptr() as *const u8, FRAMEBUFFER_SIZE) }
     }
 
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
         unsafe {
-            std::slice::from_raw_parts_mut(
-                self.buffer.as_mut_ptr() as *mut u8,
-                FRAMEBUFFER_SIZE,
-            )
+            std::slice::from_raw_parts_mut(self.buffer.as_mut_ptr() as *mut u8, FRAMEBUFFER_SIZE)
         }
     }
 

@@ -89,13 +89,21 @@ pub fn register_device(lua: &mut Lua) -> Result<()> {
         });
 
         // WiFi status getters
-        lua_getter!(device_table, ctx, "wifi_connected", WIFI_CONNECTED, |v: &bool| *v);
+        lua_getter!(
+            device_table,
+            ctx,
+            "wifi_connected",
+            WIFI_CONNECTED,
+            |v: &bool| *v
+        );
         lua_getter_string!(device_table, ctx, "wifi_ssid", WIFI_SSID);
         lua_getter_string!(device_table, ctx, "ip_address", WIFI_IP, b"Not connected");
-        lua_getter!(device_table, ctx, "wifi_rssi", WIFI_RSSI, |v: &i32| *v as i64);
+        lua_getter!(device_table, ctx, "wifi_rssi", WIFI_RSSI, |v: &i32| *v
+            as i64);
 
         // System info getters
-        lua_getter!(device_table, ctx, "free_heap", FREE_HEAP, |v: &u32| *v as i64);
+        lua_getter!(device_table, ctx, "free_heap", FREE_HEAP, |v: &u32| *v
+            as i64);
         lua_getter!(device_table, ctx, "cpu_freq", CPU_FREQ, |v: &u32| *v as i64);
 
         // device.localtime() -> table { hour, min, sec, year, month, day, weekday, yearday }
@@ -167,7 +175,11 @@ fn is_leap_year(year: i64) -> bool {
 
 fn days_in_month(year: i64, month: i64) -> i64 {
     const DAYS: [i64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    if month == 2 && is_leap_year(year) { 29 } else { DAYS[(month - 1) as usize] }
+    if month == 2 && is_leap_year(year) {
+        29
+    } else {
+        DAYS[(month - 1) as usize]
+    }
 }
 
 fn unix_to_date(local_secs: i64) -> (i64, i64, i64, i64) {
@@ -216,7 +228,10 @@ fn weekday_from_unix(local_secs: i64) -> i64 {
 
 pub fn register_env(lua: &mut Lua, config: &EnvConfig) -> Result<()> {
     let vars: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(
-        config.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        config
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
     ));
 
     let vars_get = vars.clone();
@@ -270,45 +285,58 @@ pub fn register_util(lua: &mut Lua) -> Result<()> {
         let util = Table::new(&ctx);
 
         // util.word_wrap(text, max_chars) -> table of lines
-        util.set(ctx, "word_wrap", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (a1, a2, a3): (Value, Value, Value) = stack.consume(ctx)?;
-            let (text, max) = if matches!(a1, Value::Table(_)) { (a2, a3) } else { (a1, a2) };
+        util.set(
+            ctx,
+            "word_wrap",
+            Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
+                let (a1, a2, a3): (Value, Value, Value) = stack.consume(ctx)?;
+                let (text, max) = if matches!(a1, Value::Table(_)) {
+                    (a2, a3)
+                } else {
+                    (a1, a2)
+                };
 
-            let text_str = match text {
-                Value::String(s) => s.to_str().unwrap_or("").to_string(),
-                _ => String::new(),
-            };
-            let max_chars = match max {
-                Value::Integer(n) => n.max(1) as usize,
-                Value::Number(n) => (n as i64).max(1) as usize,
-                _ => 80,
-            };
+                let text_str = match text {
+                    Value::String(s) => s.to_str().unwrap_or("").to_string(),
+                    _ => String::new(),
+                };
+                let max_chars = match max {
+                    Value::Integer(n) => n.max(1) as usize,
+                    Value::Number(n) => (n as i64).max(1) as usize,
+                    _ => 80,
+                };
 
-            let result = Table::new(&ctx);
-            for (i, line) in word_wrap(&text_str, max_chars).iter().enumerate() {
-                result.set(ctx, (i + 1) as i64, ctx.intern(line.as_bytes()))?;
-            }
-            stack.replace(ctx, result);
-            Ok(CallbackReturn::Return)
-        }))?;
+                let result = Table::new(&ctx);
+                for (i, line) in word_wrap(&text_str, max_chars).iter().enumerate() {
+                    result.set(ctx, (i + 1) as i64, ctx.intern(line.as_bytes()))?;
+                }
+                stack.replace(ctx, result);
+                Ok(CallbackReturn::Return)
+            }),
+        )?;
 
         // util.format(fmt, ...) -> string
-        util.set(ctx, "format", Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
-            let (a1, a2, a3, a4, a5): (Value, Value, Value, Value, Value) = stack.consume(ctx)?;
-            let (fmt, args) = if matches!(a1, Value::Table(_)) {
-                (a2, vec![a3, a4, a5])
-            } else {
-                (a1, vec![a2, a3, a4])
-            };
+        util.set(
+            ctx,
+            "format",
+            Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
+                let (a1, a2, a3, a4, a5): (Value, Value, Value, Value, Value) =
+                    stack.consume(ctx)?;
+                let (fmt, args) = if matches!(a1, Value::Table(_)) {
+                    (a2, vec![a3, a4, a5])
+                } else {
+                    (a1, vec![a2, a3, a4])
+                };
 
-            let fmt_str = match fmt {
-                Value::String(s) => s.to_str().unwrap_or("").to_string(),
-                _ => String::new(),
-            };
+                let fmt_str = match fmt {
+                    Value::String(s) => s.to_str().unwrap_or("").to_string(),
+                    _ => String::new(),
+                };
 
-            stack.replace(ctx, ctx.intern(format_string(&fmt_str, &args).as_bytes()));
-            Ok(CallbackReturn::Return)
-        }))?;
+                stack.replace(ctx, ctx.intern(format_string(&fmt_str, &args).as_bytes()));
+                Ok(CallbackReturn::Return)
+            }),
+        )?;
 
         ctx.set_global("util", util)?;
         Ok(())
@@ -348,7 +376,9 @@ fn word_wrap(text: &str, max: usize) -> Vec<String> {
             };
         }
     }
-    if !line.is_empty() { lines.push(line); }
+    if !line.is_empty() {
+        lines.push(line);
+    }
     lines
 }
 
@@ -358,12 +388,20 @@ fn format_string(fmt: &str, args: &[Value]) -> String {
     let mut chars = fmt.chars().peekable();
 
     while let Some(c) = chars.next() {
-        if c != '%' { result.push(c); continue; }
+        if c != '%' {
+            result.push(c);
+            continue;
+        }
         match chars.peek() {
-            Some('%') => { result.push('%'); chars.next(); }
+            Some('%') => {
+                result.push('%');
+                chars.next();
+            }
             Some(_) => {
                 let mut spec = String::from("%");
-                while chars.peek().map_or(false, |c| c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '+') {
+                while chars.peek().map_or(false, |c| {
+                    c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '+'
+                }) {
                     spec.push(chars.next().unwrap());
                 }
                 if let Some(t) = chars.next() {
@@ -392,17 +430,28 @@ fn format_value(spec: &str, value: &Value) -> String {
 
     let inner = &spec[1..spec.len() - 1];
     let zero_pad = inner.starts_with('0');
-    let width: usize = inner.trim_start_matches(|c: char| !c.is_ascii_digit()).split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let width: usize = inner
+        .trim_start_matches(|c: char| !c.is_ascii_digit())
+        .split('.')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
 
     match spec.chars().last() {
-        Some('f') => inner.find('.').and_then(|p| inner[p + 1..].parse().ok())
+        Some('f') => inner
+            .find('.')
+            .and_then(|p| inner[p + 1..].parse().ok())
             .map(|prec| format!("{:.prec$}", num, prec = prec))
             .unwrap_or_else(|| format!("{:.2}", num)),
         Some('d') => {
             let i = num as i64;
-            if zero_pad && width > 0 { format!("{:0>w$}", i, w = width) }
-            else if width > 0 { format!("{:>w$}", i, w = width) }
-            else { i.to_string() }
+            if zero_pad && width > 0 {
+                format!("{:0>w$}", i, w = width)
+            } else if width > 0 {
+                format!("{:>w$}", i, w = width)
+            } else {
+                i.to_string()
+            }
         }
         _ => num.to_string(),
     }

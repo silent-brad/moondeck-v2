@@ -27,11 +27,15 @@ impl WidgetContext {
     }
 
     pub fn get_opt<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Option<T> {
-        self.opts.get(key).and_then(|v| serde_json::from_value(v.clone()).ok())
+        self.opts
+            .get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
     pub fn get_string(&self, key: &str) -> Option<String> {
-        self.opts.get(key).and_then(|v| v.as_str().map(String::from))
+        self.opts
+            .get(key)
+            .and_then(|v| v.as_str().map(String::from))
     }
 
     pub fn get_number(&self, key: &str) -> Option<f64> {

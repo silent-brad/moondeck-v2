@@ -5,12 +5,47 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
 pub enum DrawCommand {
-    Clear { color: Color },
-    FillRoundedRect { x: i32, y: i32, w: u32, h: u32, radius: u32, color: Color },
-    StrokeRoundedRect { x: i32, y: i32, w: u32, h: u32, radius: u32, color: Color, thickness: u32 },
-    FillCircle { cx: i32, cy: i32, radius: u32, color: Color },
-    Line { x1: i32, y1: i32, x2: i32, y2: i32, color: Color, thickness: u32 },
-    Text { x: i32, y: i32, text: String, color: Color, font: Font },
+    Clear {
+        color: Color,
+    },
+    FillRoundedRect {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        radius: u32,
+        color: Color,
+    },
+    StrokeRoundedRect {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        radius: u32,
+        color: Color,
+        thickness: u32,
+    },
+    FillCircle {
+        cx: i32,
+        cy: i32,
+        radius: u32,
+        color: Color,
+    },
+    Line {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: Color,
+        thickness: u32,
+    },
+    Text {
+        x: i32,
+        y: i32,
+        text: String,
+        color: Color,
+        font: Font,
+    },
 }
 
 #[derive(Clone, Default)]
@@ -47,7 +82,10 @@ impl LuaDrawCommands {
     }
 
     pub fn get_offset(&self) -> (i32, i32) {
-        (*self.offset_x.lock().unwrap(), *self.offset_y.lock().unwrap())
+        (
+            *self.offset_x.lock().unwrap(),
+            *self.offset_y.lock().unwrap(),
+        )
     }
 }
 

@@ -10,10 +10,8 @@ pub struct FileSystem {
 
 impl FileSystem {
     pub fn mount(partition_label: &str, mount_point: &str) -> Result<Self> {
-        let c_partition = CString::new(partition_label)
-            .context("Invalid partition label")?;
-        let c_mount = CString::new(mount_point)
-            .context("Invalid mount point")?;
+        let c_partition = CString::new(partition_label).context("Invalid partition label")?;
+        let c_mount = CString::new(mount_point).context("Invalid mount point")?;
 
         let conf = sys::esp_vfs_spiffs_conf_t {
             base_path: c_mount.as_ptr(),
@@ -23,8 +21,7 @@ impl FileSystem {
         };
 
         unsafe {
-            sys::esp!(sys::esp_vfs_spiffs_register(&conf))
-                .context("Failed to mount SPIFFS")?;
+            sys::esp!(sys::esp_vfs_spiffs_register(&conf)).context("Failed to mount SPIFFS")?;
         }
 
         log::info!("SPIFFS mounted at {}", mount_point);
@@ -78,8 +75,7 @@ impl FileSystem {
 
     pub fn delete_file(&self, relative_path: &str) -> Result<()> {
         let full_path = self.path(relative_path);
-        fs::remove_file(&full_path)
-            .with_context(|| format!("Failed to delete file: {}", full_path))
+        fs::remove_file(&full_path).with_context(|| format!("Failed to delete file: {}", full_path))
     }
 
     pub fn create_dir(&self, relative_path: &str) -> Result<()> {

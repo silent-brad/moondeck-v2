@@ -21,7 +21,11 @@ pub struct DrawContext<'a, T: DrawTarget<Color = Rgb565>> {
 
 impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
     pub fn new(target: &'a mut T) -> Self {
-        Self { target, offset_x: 0, offset_y: 0 }
+        Self {
+            target,
+            offset_x: 0,
+            offset_y: 0,
+        }
     }
 
     pub fn with_offset(mut self, x: i32, y: i32) -> Self {
@@ -52,14 +56,29 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
 
     pub fn fill_rounded_rect(&mut self, x: i32, y: i32, w: u32, h: u32, radius: u32, color: Color) {
         let _ = RoundedRectangle::with_equal_corners(
-            Rectangle::new(self.pt(x, y), Size::new(w, h)), Size::new(radius, radius),
-        ).into_styled(PrimitiveStyle::with_fill(color.into())).draw(self.target);
+            Rectangle::new(self.pt(x, y), Size::new(w, h)),
+            Size::new(radius, radius),
+        )
+        .into_styled(PrimitiveStyle::with_fill(color.into()))
+        .draw(self.target);
     }
 
-    pub fn stroke_rounded_rect(&mut self, x: i32, y: i32, w: u32, h: u32, radius: u32, color: Color, thickness: u32) {
+    pub fn stroke_rounded_rect(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        radius: u32,
+        color: Color,
+        thickness: u32,
+    ) {
         let _ = RoundedRectangle::with_equal_corners(
-            Rectangle::new(self.pt(x, y), Size::new(w, h)), Size::new(radius, radius),
-        ).into_styled(PrimitiveStyle::with_stroke(color.into(), thickness)).draw(self.target);
+            Rectangle::new(self.pt(x, y), Size::new(w, h)),
+            Size::new(radius, radius),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(color.into(), thickness))
+        .draw(self.target);
     }
 
     pub fn fill_circle(&mut self, cx: i32, cy: i32, radius: u32, color: Color) {
@@ -83,9 +102,15 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
     }
 
     pub fn text(&mut self, x: i32, y: i32, s: &str, color: Color, font: Font) {
-        const FONTS: [&embedded_graphics::mono_font::MonoFont; 4] = [&FONT_6X10, &FONT_7X13, &FONT_9X15, &FONT_10X20];
+        const FONTS: [&embedded_graphics::mono_font::MonoFont; 4] =
+            [&FONT_6X10, &FONT_7X13, &FONT_9X15, &FONT_10X20];
         let mono_font = FONTS[font as usize];
-        let _ = Text::new(s, self.pt(x, y), MonoTextStyle::new(mono_font, color.into())).draw(self.target);
+        let _ = Text::new(
+            s,
+            self.pt(x, y),
+            MonoTextStyle::new(mono_font, color.into()),
+        )
+        .draw(self.target);
     }
 
     pub fn pixel(&mut self, x: i32, y: i32, color: Color) {
@@ -93,7 +118,26 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
     }
 
     pub fn text_ttf(&mut self, x: i32, y: i32, s: &str, color: Color, font: TtfFont) {
-        self.text_bitmap(x, y, s, color, get_bitmap_font(font.family, font.weight, font.style, font.size));
+        self.text_bitmap(
+            x,
+            y,
+            s,
+            color,
+            get_bitmap_font(font.family, font.weight, font.style, font.size),
+        );
+    }
+
+    pub fn text_ttf_width(&self, s: &str, font: &TtfFont) -> i32 {
+        let bf = get_bitmap_font(font.family, font.weight, font.style, font.size);
+        let mut w = 0i32;
+        for c in s.chars() {
+            if let Some(glyph) = bf.glyph(c) {
+                w += glyph.advance as i32;
+            } else {
+                w += (bf.size / 2) as i32;
+            }
+        }
+        w
     }
 
     pub fn text_bitmap(&mut self, x: i32, y: i32, s: &str, color: Color, font: &super::BitmapFont) {

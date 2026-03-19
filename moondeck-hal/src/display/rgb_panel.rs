@@ -94,11 +94,11 @@ impl Display {
                 vsync_front_porch: config.vsync_front_porch,
                 flags: sys::esp_lcd_rgb_timing_t__bindgen_ty_1 {
                     _bitfield_1: sys::esp_lcd_rgb_timing_t__bindgen_ty_1::new_bitfield_1(
-                        0, // hsync_idle_low
-                        0, // vsync_idle_low
-                        0, // de_idle_high
+                        0,                             // hsync_idle_low
+                        0,                             // vsync_idle_low
+                        0,                             // de_idle_high
                         config.pclk_active_neg as u32, // pclk_active_neg
-                        0, // pclk_idle_high
+                        0,                             // pclk_idle_high
                     ),
                     ..Default::default()
                 },
@@ -150,8 +150,7 @@ impl Display {
             sys::esp!(sys::esp_lcd_new_rgb_panel(&panel_config, &mut panel_handle))
                 .context("Failed to create RGB panel")?;
 
-            sys::esp!(sys::esp_lcd_panel_reset(panel_handle))
-                .context("Failed to reset panel")?;
+            sys::esp!(sys::esp_lcd_panel_reset(panel_handle)).context("Failed to reset panel")?;
 
             sys::esp!(sys::esp_lcd_panel_init(panel_handle))
                 .context("Failed to initialize panel")?;
@@ -168,7 +167,12 @@ impl Display {
             .context("Failed to get framebuffer pointer")?;
         }
 
-        log::info!("Display initialized: {}x{}, fb_ptr: {:?}", DISPLAY_WIDTH, DISPLAY_HEIGHT, fb_ptrs[0]);
+        log::info!(
+            "Display initialized: {}x{}, fb_ptr: {:?}",
+            DISPLAY_WIDTH,
+            DISPLAY_HEIGHT,
+            fb_ptrs[0]
+        );
 
         Ok(Self {
             panel_handle,

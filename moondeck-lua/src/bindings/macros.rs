@@ -161,7 +161,9 @@ macro_rules! run_with_fuel {
         let mut fuel = piccolo::Fuel::with($fuel);
         let exec = $ctx.fetch(&stashed);
         while !exec.step($ctx, &mut fuel) {
-            if fuel.remaining() <= 0 { break; }
+            if fuel.remaining() <= 0 {
+                break;
+            }
         }
         exec
     }};
@@ -169,4 +171,7 @@ macro_rules! run_with_fuel {
 
 // Re-exports for use outside this module (if needed)
 #[allow(unused_imports)]
-pub use {lua_fn, lua_getter, lua_getter_string, define_state, gfx_draw, theme_accessors, set_theme_fields, run_with_fuel};
+pub use {
+    define_state, gfx_draw, lua_fn, lua_getter, lua_getter_string, run_with_fuel, set_theme_fields,
+    theme_accessors,
+};

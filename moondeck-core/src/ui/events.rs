@@ -106,7 +106,14 @@ impl GestureDetector {
 
                 log::info!(
                     "Gesture calc: start=({},{}) end=({},{}) dx={} dy={} dt={}ms threshold={}",
-                    sx, sy, end_x, end_y, dx, dy, dt, self.threshold_px
+                    sx,
+                    sy,
+                    end_x,
+                    end_y,
+                    dx,
+                    dy,
+                    dt,
+                    self.threshold_px
                 );
 
                 let abs_dx = dx.abs();

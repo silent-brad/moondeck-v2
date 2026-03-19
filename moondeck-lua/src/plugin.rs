@@ -23,11 +23,19 @@ pub struct WidgetPlugin {
 
 impl WidgetPlugin {
     pub fn new(module: &str, _instance_id: usize) -> Self {
-        Self { module: module.to_string(), module_table: None, widget_state: None, initialized: false }
+        Self {
+            module: module.to_string(),
+            module_table: None,
+            widget_state: None,
+            initialized: false,
+        }
     }
 
     fn get_source(&self) -> Option<&'static str> {
-        EMBEDDED_WIDGETS.iter().find(|(n, _)| *n == self.module).map(|(_, s)| *s)
+        EMBEDDED_WIDGETS
+            .iter()
+            .find(|(n, _)| *n == self.module)
+            .map(|(_, s)| *s)
     }
 
     pub fn init(&mut self, runtime: &mut LuaRuntime, ctx: &WidgetContext) -> Result<()> {
@@ -45,29 +53,43 @@ impl WidgetPlugin {
         let lua = runtime.lua();
         let module_name = self.module.clone();
 
-        let (module_table, widget_state) = lua.try_enter(|lctx| {
-            // Load module
-            let closure = Closure::load(lctx, Some(&module_name), source.as_bytes())?;
-            let exec = run_executor(lctx, Executor::start(lctx, closure.into(), ()), &module_name, "load")?;
+        let (module_table, widget_state) = lua
+            .try_enter(|lctx| {
+                // Load module
+                let closure = Closure::load(lctx, Some(&module_name), source.as_bytes())?;
+                let exec = run_executor(
+                    lctx,
+                    Executor::start(lctx, closure.into(), ()),
+                    &module_name,
+                    "load",
+                )?;
 
-            let module = match exec.take_result::<Value>(lctx)? {
-                Ok(Value::Table(t)) => t,
-                Ok(_) | Err(_) => return Ok((None, None)),
-            };
+                let module = match exec.take_result::<Value>(lctx)? {
+                    Ok(Value::Table(t)) => t,
+                    Ok(_) | Err(_) => return Ok((None, None)),
+                };
 
-            // Call init if exists
-            let state = if let Value::Function(f) = module.get(lctx, "init") {
-                let ctx_table = build_context_table(lctx, ctx)?;
-                let exec = run_executor(lctx, Executor::start(lctx, f, (ctx_table,)), &module_name, "init")?;
-                match exec.take_result::<Value>(lctx)? {
-                    Ok(Value::Table(t)) => Some(lctx.stash(t)),
-                    _ => None,
-                }
-            } else { None };
+                // Call init if exists
+                let state = if let Value::Function(f) = module.get(lctx, "init") {
+                    let ctx_table = build_context_table(lctx, ctx)?;
+                    let exec = run_executor(
+                        lctx,
+                        Executor::start(lctx, f, (ctx_table,)),
+                        &module_name,
+                        "init",
+                    )?;
+                    match exec.take_result::<Value>(lctx)? {
+                        Ok(Value::Table(t)) => Some(lctx.stash(t)),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
 
-            log::info!("Widget {} loaded", module_name);
-            Ok((Some(lctx.stash(module)), state))
-        }).context("Failed to initialize widget")?;
+                log::info!("Widget {} loaded", module_name);
+                Ok((Some(lctx.stash(module)), state))
+            })
+            .context("Failed to initialize widget")?;
 
         self.module_table = module_table;
         self.widget_state = widget_state;
@@ -76,7 +98,10 @@ impl WidgetPlugin {
     }
 
     pub fn update(&self, runtime: &mut LuaRuntime, delta_ms: u32) -> Result<()> {
-        let module_table = match &self.module_table { Some(m) => m, None => return Ok(()) };
+        let module_table = match &self.module_table {
+            Some(m) => m,
+            None => return Ok(()),
+        };
         let module_name = &self.module;
         let widget_state = &self.widget_state;
 
@@ -84,7 +109,12 @@ impl WidgetPlugin {
             let module = lctx.fetch(module_table);
             if let Value::Function(f) = module.get(lctx, "update") {
                 let state = get_state_value(lctx, widget_state);
-                let exec = run_executor(lctx, Executor::start(lctx, f, (state, delta_ms as i64)), module_name, "update")?;
+                let exec = run_executor(
+                    lctx,
+                    Executor::start(lctx, f, (state, delta_ms as i64)),
+                    module_name,
+                    "update",
+                )?;
                 if let Ok(Err(e)) = exec.take_result::<Value>(lctx) {
                     log::error!("Widget {} update error: {:?}", module_name, e);
                 }
@@ -95,10 +125,18 @@ impl WidgetPlugin {
     }
 
     pub fn render<T: DrawTarget<Color = Rgb565>>(
-        &self, runtime: &mut LuaRuntime, ctx: &WidgetContext, draw_ctx: &mut DrawContext<'_, T>,
+        &self,
+        runtime: &mut LuaRuntime,
+        ctx: &WidgetContext,
+        draw_ctx: &mut DrawContext<'_, T>,
     ) -> Result<()> {
-        if !self.initialized { return Ok(()); }
-        let module_table = match &self.module_table { Some(m) => m, None => return Ok(()) };
+        if !self.initialized {
+            return Ok(());
+        }
+        let module_table = match &self.module_table {
+            Some(m) => m,
+            None => return Ok(()),
+        };
 
         let draw_cmds = get_draw_commands();
         draw_cmds.clear_commands();
@@ -110,7 +148,12 @@ impl WidgetPlugin {
             if let Value::Function(f) = module.get(lctx, "render") {
                 let state = get_state_value(lctx, widget_state);
                 let gfx = lctx.globals().get(lctx, "gfx");
-                let exec = run_executor(lctx, Executor::start(lctx, f, (state, gfx)), &self.module, "render")?;
+                let exec = run_executor(
+                    lctx,
+                    Executor::start(lctx, f, (state, gfx)),
+                    &self.module,
+                    "render",
+                )?;
                 if let Ok(Err(e)) = exec.take_result::<Value>(lctx) {
                     log::error!("Widget {} render error: {:?}", self.module, e);
                 }
@@ -123,7 +166,10 @@ impl WidgetPlugin {
     }
 
     pub fn on_event(&self, runtime: &mut LuaRuntime, event: &Event) -> Result<bool> {
-        let module_table = match &self.module_table { Some(m) => m, None => return Ok(false) };
+        let module_table = match &self.module_table {
+            Some(m) => m,
+            None => return Ok(false),
+        };
         let widget_state = &self.widget_state;
 
         Ok(runtime.lua().try_enter(|lctx| {
@@ -131,7 +177,12 @@ impl WidgetPlugin {
             if let Value::Function(f) = module.get(lctx, "on_event") {
                 let state = get_state_value(lctx, widget_state);
                 let event_table = build_event_table(lctx, event)?;
-                let exec = run_executor(lctx, Executor::start(lctx, f, (state, event_table)), &self.module, "on_event")?;
+                let exec = run_executor(
+                    lctx,
+                    Executor::start(lctx, f, (state, event_table)),
+                    &self.module,
+                    "on_event",
+                )?;
                 if let Ok(Ok(Value::Boolean(b))) = exec.take_result::<Value>(lctx) {
                     return Ok(b);
                 }
@@ -143,7 +194,10 @@ impl WidgetPlugin {
 
 // Helper to run executor with fuel
 fn run_executor<'gc>(
-    ctx: piccolo::Context<'gc>, executor: Executor<'gc>, module: &str, method: &str,
+    ctx: piccolo::Context<'gc>,
+    executor: Executor<'gc>,
+    module: &str,
+    method: &str,
 ) -> Result<Executor<'gc>, anyhow::Error> {
     let stashed = ctx.stash(executor);
     let mut fuel = Fuel::with(100000);
@@ -158,10 +212,16 @@ fn run_executor<'gc>(
 }
 
 fn get_state_value<'gc>(ctx: piccolo::Context<'gc>, state: &Option<StashedTable>) -> Value<'gc> {
-    state.as_ref().map(|s| ctx.fetch(s).into()).unwrap_or_else(|| Table::new(&ctx).into())
+    state
+        .as_ref()
+        .map(|s| ctx.fetch(s).into())
+        .unwrap_or_else(|| Table::new(&ctx).into())
 }
 
-fn build_context_table<'gc>(ctx: piccolo::Context<'gc>, wctx: &WidgetContext) -> Result<Table<'gc>, piccolo::Error<'gc>> {
+fn build_context_table<'gc>(
+    ctx: piccolo::Context<'gc>,
+    wctx: &WidgetContext,
+) -> Result<Table<'gc>, piccolo::Error<'gc>> {
     let t = Table::new(&ctx);
     t.set(ctx, "x", wctx.x as i64)?;
     t.set(ctx, "y", wctx.y as i64)?;
@@ -177,7 +237,10 @@ fn build_context_table<'gc>(ctx: piccolo::Context<'gc>, wctx: &WidgetContext) ->
     Ok(t)
 }
 
-fn build_event_table<'gc>(ctx: piccolo::Context<'gc>, event: &Event) -> Result<Table<'gc>, piccolo::Error<'gc>> {
+fn build_event_table<'gc>(
+    ctx: piccolo::Context<'gc>,
+    event: &Event,
+) -> Result<Table<'gc>, piccolo::Error<'gc>> {
     let t = Table::new(&ctx);
     match event {
         Event::Gesture(Gesture::Tap { x, y }) => {
@@ -187,31 +250,74 @@ fn build_event_table<'gc>(ctx: piccolo::Context<'gc>, event: &Event) -> Result<T
         }
         Event::Gesture(g) => {
             t.set(ctx, "type", "swipe")?;
-            t.set(ctx, "direction", match g {
-                Gesture::SwipeLeft => "left",
-                Gesture::SwipeRight => "right",
-                Gesture::SwipeUp => "up",
-                Gesture::SwipeDown => "down",
-                _ => "unknown",
-            })?;
+            t.set(
+                ctx,
+                "direction",
+                match g {
+                    Gesture::SwipeLeft => "left",
+                    Gesture::SwipeRight => "right",
+                    Gesture::SwipeUp => "up",
+                    Gesture::SwipeDown => "down",
+                    _ => "unknown",
+                },
+            )?;
         }
-        _ => { t.set(ctx, "type", "unknown")?; }
+        _ => {
+            t.set(ctx, "type", "unknown")?;
+        }
     }
     Ok(t)
 }
 
 fn execute_draw_commands<T: DrawTarget<Color = Rgb565>>(
-    commands: Vec<DrawCommand>, ctx: &WidgetContext, draw_ctx: &mut DrawContext<'_, T>,
+    commands: Vec<DrawCommand>,
+    ctx: &WidgetContext,
+    draw_ctx: &mut DrawContext<'_, T>,
 ) {
     use moondeck_core::gfx::Font;
     for cmd in commands {
         match cmd {
-            DrawCommand::Clear { color } => draw_ctx.fill_rect(ctx.x, ctx.y, ctx.width, ctx.height, color),
-            DrawCommand::FillRoundedRect { x, y, w, h, radius, color } => draw_ctx.fill_rounded_rect(x, y, w, h, radius, color),
-            DrawCommand::StrokeRoundedRect { x, y, w, h, radius, color, thickness } => draw_ctx.stroke_rounded_rect(x, y, w, h, radius, color, thickness),
-            DrawCommand::FillCircle { cx, cy, radius, color } => draw_ctx.fill_circle(cx, cy, radius, color),
-            DrawCommand::Line { x1, y1, x2, y2, color, thickness } => draw_ctx.line(x1, y1, x2, y2, color, thickness),
-            DrawCommand::Text { x, y, text, color, font } => {
+            DrawCommand::Clear { color } => {
+                draw_ctx.fill_rect(ctx.x, ctx.y, ctx.width, ctx.height, color)
+            }
+            DrawCommand::FillRoundedRect {
+                x,
+                y,
+                w,
+                h,
+                radius,
+                color,
+            } => draw_ctx.fill_rounded_rect(x, y, w, h, radius, color),
+            DrawCommand::StrokeRoundedRect {
+                x,
+                y,
+                w,
+                h,
+                radius,
+                color,
+                thickness,
+            } => draw_ctx.stroke_rounded_rect(x, y, w, h, radius, color, thickness),
+            DrawCommand::FillCircle {
+                cx,
+                cy,
+                radius,
+                color,
+            } => draw_ctx.fill_circle(cx, cy, radius, color),
+            DrawCommand::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                thickness,
+            } => draw_ctx.line(x1, y1, x2, y2, color, thickness),
+            DrawCommand::Text {
+                x,
+                y,
+                text,
+                color,
+                font,
+            } => {
                 let ttf = match font {
                     Font::Small => TtfFont::inter(12),
                     Font::Medium => TtfFont::inter(16),

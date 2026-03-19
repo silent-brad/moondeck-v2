@@ -1,5 +1,5 @@
-mod gt911;
 mod gestures;
+mod gt911;
 
-pub use gt911::TouchController;
 pub use gestures::GestureProcessor;
+pub use gt911::TouchController;

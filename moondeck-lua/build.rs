@@ -64,7 +64,8 @@ fn generate_embedded_themes(manifest_dir: &str, out_dir: &str) {
     ));
 
     // Generate ThemeColors struct
-    code.push_str(r#"#[derive(Debug, Clone)]
+    code.push_str(
+        r#"#[derive(Debug, Clone)]
 pub struct ThemeColors {
     bg_primary: &'static str,
     bg_secondary: &'static str,
@@ -85,12 +86,16 @@ pub struct ThemeColors {
     border_width: i64,
 }
 
-"#);
+"#,
+    );
 
     // Generate theme constants
     for (name, props) in &themes {
         let const_name = format!("THEME_{}", name.to_uppercase());
-        code.push_str(&format!("const {}: ThemeColors = ThemeColors {{\n", const_name));
+        code.push_str(&format!(
+            "const {}: ThemeColors = ThemeColors {{\n",
+            const_name
+        ));
 
         for field in &[
             "bg_primary",

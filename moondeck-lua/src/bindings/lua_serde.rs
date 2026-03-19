@@ -5,11 +5,11 @@ pub fn json_to_lua<'gc>(ctx: Context<'gc>, value: &serde_json::Value) -> Value<'
     match value {
         serde_json::Value::Null => Value::Nil,
         serde_json::Value::Bool(b) => Value::Boolean(*b),
-        serde_json::Value::Number(n) => {
-            n.as_i64().map(Value::Integer)
-                .or_else(|| n.as_f64().map(Value::Number))
-                .unwrap_or(Value::Nil)
-        }
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .map(Value::Integer)
+            .or_else(|| n.as_f64().map(Value::Number))
+            .unwrap_or(Value::Nil),
         serde_json::Value::String(s) => Value::String(ctx.intern(s.as_bytes())),
         serde_json::Value::Array(arr) => {
             let table = Table::new(&ctx);
@@ -35,9 +35,7 @@ pub fn lua_to_json<'gc>(ctx: Context<'gc>, value: Value<'gc>) -> serde_json::Val
         Value::Boolean(b) => serde_json::Value::Bool(b),
         Value::Integer(i) => serde_json::json!(i),
         Value::Number(n) => serde_json::json!(n),
-        Value::String(s) => {
-            serde_json::Value::String(s.to_str().unwrap_or("").to_string())
-        }
+        Value::String(s) => serde_json::Value::String(s.to_str().unwrap_or("").to_string()),
         Value::Table(t) => table_to_json(ctx, t),
         _ => serde_json::Value::Null,
     }
@@ -51,7 +49,9 @@ pub fn table_to_json<'gc>(ctx: Context<'gc>, table: Table<'gc>) -> serde_json::V
         let mut idx = 1i64;
         loop {
             let v = table.get_value(Value::Integer(idx));
-            if matches!(v, Value::Nil) { break; }
+            if matches!(v, Value::Nil) {
+                break;
+            }
             arr.push(lua_to_json(ctx, v));
             idx += 1;
         }

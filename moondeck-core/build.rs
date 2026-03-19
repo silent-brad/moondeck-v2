@@ -3,6 +3,9 @@ use std::fs;
 use std::path::Path;
 
 const SIZES: [u32; 4] = [14, 18, 24, 32];
+const LARGE_SIZES: [u32; 1] = [80];
+const LARGE_FONT_FAMILY: &str = "EBGaramond";
+const LARGE_FONT_WEIGHT: &str = "Regular";
 const CHAR_START: u8 = 32;
 const CHAR_END: u8 = 126;
 
@@ -47,10 +50,7 @@ fn discover_fonts(fonts_dir: &Path) -> Vec<FontVariant> {
 
             let (weight, style) = parse_font_style(&stem);
 
-            let relative_path = format!(
-                "src/assets/fonts/{}/{}",
-                family_name, file_name
-            );
+            let relative_path = format!("src/assets/fonts/{}/{}", family_name, file_name);
 
             variants.push(FontVariant {
                 family: family_name.clone(),
@@ -154,13 +154,22 @@ impl BitmapFont {
 
     for variant in variants {
         let font_path = Path::new(manifest_dir).join(&variant.path);
-        let font_data = fs::read(&font_path).unwrap_or_else(|_| panic!("Failed to read font: {}", variant.path));
+        let font_data = fs::read(&font_path)
+            .unwrap_or_else(|_| panic!("Failed to read font: {}", variant.path));
         let font = rusttype::Font::try_from_vec(font_data).expect("Failed to parse font");
 
-        for &size in &SIZES {
+        let is_large_variant = variant.family == LARGE_FONT_FAMILY && variant.weight == LARGE_FONT_WEIGHT;
+        let all_sizes: Vec<u32> = if is_large_variant {
+            SIZES.iter().chain(LARGE_SIZES.iter()).copied().collect()
+        } else {
+            SIZES.to_vec()
+        };
+
+        for &size in &all_sizes {
             let scale = rusttype::Scale::uniform(size as f32);
             let v_metrics = font.v_metrics(scale);
-            let line_height = (v_metrics.ascent - v_metrics.descent + v_metrics.line_gap).ceil() as u8;
+            let line_height =
+                (v_metrics.ascent - v_metrics.descent + v_metrics.line_gap).ceil() as u8;
             let ascent = v_metrics.ascent.ceil() as i8;
 
             let mut glyphs_data: Vec<u8> = Vec::new();
@@ -193,7 +202,15 @@ impl BitmapFont {
                     glyphs_data.extend_from_slice(&glyph_pixels);
                     let data_len = glyph_pixels.len();
 
-                    glyph_infos.push((width, height, bearing_x, bearing_y, advance, data_offset, data_len));
+                    glyph_infos.push((
+                        width,
+                        height,
+                        bearing_x,
+                        bearing_y,
+                        advance,
+                        data_offset,
+                        data_len,
+                    ));
                 } else {
                     glyph_infos.push((0, 0, 0, 0, advance, 0, 0));
                 }
@@ -201,8 +218,13 @@ impl BitmapFont {
 
             let const_name = format!("{}_{}", variant_const_name(variant), size);
 
-            code.push_str(&format!("const {}_GLYPHS: &[BitmapGlyph] = &[\n", const_name));
-            for (width, height, bearing_x, bearing_y, advance, data_offset, data_len) in &glyph_infos {
+            code.push_str(&format!(
+                "const {}_GLYPHS: &[BitmapGlyph] = &[\n",
+                const_name
+            ));
+            for (width, height, bearing_x, bearing_y, advance, data_offset, data_len) in
+                &glyph_infos
+            {
                 code.push_str(&format!(
                     "    BitmapGlyph {{ width: {}, height: {}, bearing_x: {}, bearing_y: {}, advance: {}, data_offset: {}, data_len: {} }},\n",
                     width, height, bearing_x, bearing_y, advance, data_offset, data_len
@@ -232,15 +254,27 @@ impl BitmapFont {
     code.push_str("        0..=15 => 14,\n");
     code.push_str("        16..=20 => 18,\n");
     code.push_str("        21..=27 => 24,\n");
-    code.push_str("        _ => 32,\n");
+    code.push_str("        28..=55 => 32,\n");
+    code.push_str("        _ => 80,\n");
     code.push_str("    };\n");
     code.push_str("    match (family, weight, style, nearest_size) {\n");
 
     for variant in variants {
-        for &size in &SIZES {
+        let is_large_variant = variant.family == LARGE_FONT_FAMILY && variant.weight == LARGE_FONT_WEIGHT;
+        let variant_sizes: Vec<u32> = if is_large_variant {
+            SIZES.iter().chain(LARGE_SIZES.iter()).copied().collect()
+        } else {
+            SIZES.to_vec()
+        };
+        for &size in &variant_sizes {
             code.push_str(&format!(
                 "        (FontFamily::{}, FontWeight::{}, FontStyle::{}, {}) => &{}_{},\n",
-                variant.family, variant.weight, variant.style, size, variant_const_name(variant), size
+                variant.family,
+                variant.weight,
+                variant.style,
+                size,
+                variant_const_name(variant),
+                size
             ));
         }
     }
@@ -272,7 +306,9 @@ use serde::{Deserialize, Serialize};
 "#,
     );
 
-    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n");
+    code.push_str(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n",
+    );
     code.push_str("#[serde(rename_all = \"lowercase\")]\n");
     code.push_str("pub enum FontFamily {\n");
     for (i, family) in families.iter().enumerate() {
@@ -283,7 +319,9 @@ use serde::{Deserialize, Serialize};
     }
     code.push_str("}\n\n");
 
-    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n");
+    code.push_str(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n",
+    );
     code.push_str("#[serde(rename_all = \"lowercase\")]\n");
     code.push_str("pub enum FontWeight {\n");
     for weight in &weights {
@@ -294,7 +332,9 @@ use serde::{Deserialize, Serialize};
     }
     code.push_str("}\n\n");
 
-    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n");
+    code.push_str(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]\n",
+    );
     code.push_str("#[serde(rename_all = \"lowercase\")]\n");
     code.push_str("pub enum FontStyle {\n");
     for style in &styles {

@@ -15,7 +15,11 @@ pub struct LuaRuntime {
 
 impl LuaRuntime {
     pub fn new() -> Result<Self> {
-        Ok(Self { lua: Lua::full(), executor: None, config_path: None })
+        Ok(Self {
+            lua: Lua::full(),
+            executor: None,
+            config_path: None,
+        })
     }
 
     pub fn with_config_path(mut self, path: &str) -> Self {
@@ -25,7 +29,9 @@ impl LuaRuntime {
 
     pub fn init(&mut self, env: &EnvConfig) -> Result<()> {
         bindings::register_all(&mut self.lua, env).context("Failed to register Lua bindings")?;
-        let init_src = self.config_path.as_ref()
+        let init_src = self
+            .config_path
+            .as_ref()
             .and_then(|p| std::fs::read_to_string(format!("{}/init.lua", p)).ok())
             .unwrap_or_else(|| EMBEDDED_INIT_LUA.to_string());
         self.load_script(&init_src)?;
@@ -52,7 +58,9 @@ impl LuaRuntime {
 
     pub fn run_pending(&mut self) -> Result<()> {
         if let Some(ref executor) = self.executor {
-            self.lua.execute::<()>(executor).map_err(|e| anyhow::anyhow!("Lua error: {:?}", e))?;
+            self.lua
+                .execute::<()>(executor)
+                .map_err(|e| anyhow::anyhow!("Lua error: {:?}", e))?;
         }
         Ok(())
     }
@@ -65,19 +73,29 @@ impl LuaRuntime {
     }
 
     fn load_pages_from_config(&mut self) -> Result<Vec<Page>> {
-        let lua_src = self.config_path.as_ref()
+        let lua_src = self
+            .config_path
+            .as_ref()
             .and_then(|p| std::fs::read_to_string(format!("{}/pages.lua", p)).ok())
             .unwrap_or_else(|| EMBEDDED_PAGES_LUA.to_string());
         parse_pages_config(&lua_src)
     }
 
-    pub fn lua(&mut self) -> &mut Lua { &mut self.lua }
-    pub fn get_theme_background(&self) -> String { bindings::get_theme_bg_primary().to_string() }
-    pub fn get_current_theme(&self) -> String { bindings::get_current_theme() }
+    pub fn lua(&mut self) -> &mut Lua {
+        &mut self.lua
+    }
+    pub fn get_theme_background(&self) -> String {
+        bindings::get_theme_bg_primary().to_string()
+    }
+    pub fn get_current_theme(&self) -> String {
+        bindings::get_current_theme()
+    }
 }
 
 impl Default for LuaRuntime {
-    fn default() -> Self { Self::new().expect("Failed to create Lua runtime") }
+    fn default() -> Self {
+        Self::new().expect("Failed to create Lua runtime")
+    }
 }
 
 // Layout constants
@@ -87,31 +105,42 @@ const GUTTER: i32 = 16;
 const COLS: i32 = 12;
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct PagesConfig { pages: Vec<PageConfig> }
+struct PagesConfig {
+    pages: Vec<PageConfig>,
+}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct PageConfig {
     id: String,
     title: Option<String>,
     layout: Option<String>,
-    #[serde(default)] widgets: Vec<WidgetConfig>,
+    #[serde(default)]
+    widgets: Vec<WidgetConfig>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct WidgetConfig {
     module: String,
-    #[serde(default)] slot: usize,
-    #[serde(default)] x: i32,
-    #[serde(default)] y: i32,
-    #[serde(default = "default_dim")] w: u32,
-    #[serde(default = "default_dim")] h: u32,
+    #[serde(default)]
+    slot: usize,
+    #[serde(default)]
+    x: i32,
+    #[serde(default)]
+    y: i32,
+    #[serde(default = "default_dim")]
+    w: u32,
+    #[serde(default = "default_dim")]
+    h: u32,
     update_interval: Option<u64>,
     opts: Option<serde_json::Value>,
 }
 
-fn default_dim() -> u32 { 100 }
+fn default_dim() -> u32 {
+    100
+}
 
-fn get_layout_slots(name: &str) -> Vec<(i32, i32, i32, i32)> { // (col, span, row, row_span)
+fn get_layout_slots(name: &str) -> Vec<(i32, i32, i32, i32)> {
+    // (col, span, row, row_span)
     match name {
         "full" => vec![(1, 12, 1, 2)],
         "half_half" => vec![(1, 6, 1, 2), (7, 6, 1, 2)],
@@ -143,9 +172,15 @@ fn parse_pages_config(lua_src: &str) -> Result<Vec<Page>> {
     let json_string: String = lua.enter(|ctx| {
         let exec = ctx.fetch(&stashed);
         let mut fuel = Fuel::with(1000000);
-        while !exec.step(ctx, &mut fuel) { if fuel.remaining() <= 0 { break; } }
+        while !exec.step(ctx, &mut fuel) {
+            if fuel.remaining() <= 0 {
+                break;
+            }
+        }
         match exec.take_result::<Value>(ctx) {
-            Ok(Ok(Value::Table(t))) => serde_json::to_string(&table_to_json(ctx, t)).unwrap_or_default(),
+            Ok(Ok(Value::Table(t))) => {
+                serde_json::to_string(&table_to_json(ctx, t)).unwrap_or_default()
+            }
             _ => String::new(),
         }
     });
@@ -157,25 +192,31 @@ fn parse_pages_config(lua_src: &str) -> Result<Vec<Page>> {
     let config: PagesConfig = serde_json::from_str(&json_string)
         .with_context(|| format!("Parse error: {}", json_string))?;
 
-    Ok(config.pages.into_iter().map(|p| {
-        let mut page = Page::new(&p.id, p.title.as_deref().unwrap_or(&p.id));
-        let slots = p.layout.as_deref().map(get_layout_slots);
+    Ok(config
+        .pages
+        .into_iter()
+        .map(|p| {
+            let mut page = Page::new(&p.id, p.title.as_deref().unwrap_or(&p.id));
+            let slots = p.layout.as_deref().map(get_layout_slots);
 
-        for w in p.widgets {
-            let (x, y, width, height) = slots.as_ref()
-                .and_then(|s| s.get(w.slot.saturating_sub(1).max(0)))
-                .map(|&(c, sp, r, rs)| slot_bounds(c, sp, r, rs, 2))
-                .unwrap_or((w.x, w.y, w.w, w.h));
+            for w in p.widgets {
+                let (x, y, width, height) = slots
+                    .as_ref()
+                    .and_then(|s| s.get(w.slot.saturating_sub(1).max(0)))
+                    .map(|&(c, sp, r, rs)| slot_bounds(c, sp, r, rs, 2))
+                    .unwrap_or((w.x, w.y, w.w, w.h));
 
-            let mut widget = WidgetInstance::new(&w.module, x, y, width, height)
-                .with_update_interval(w.update_interval.unwrap_or(1000));
-            if let Some(opts) = w.opts {
-                widget.context.opts = opts.as_object()
-                    .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-                    .unwrap_or_default();
+                let mut widget = WidgetInstance::new(&w.module, x, y, width, height)
+                    .with_update_interval(w.update_interval.unwrap_or(1000));
+                if let Some(opts) = w.opts {
+                    widget.context.opts = opts
+                        .as_object()
+                        .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                        .unwrap_or_default();
+                }
+                page = page.with_widget(widget);
             }
-            page = page.with_widget(widget);
-        }
-        page
-    }).collect())
+            page
+        })
+        .collect())
 }

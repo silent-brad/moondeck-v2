@@ -32,7 +32,11 @@ impl EnvConfig {
             }
             if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim().to_string();
-                let value = value.trim().trim_matches('"').trim_matches('\'').to_string();
+                let value = value
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
                 vars.insert(key, value);
             }
         }
@@ -44,7 +48,10 @@ impl EnvConfig {
     }
 
     pub fn get_or(&self, key: &str, default: &str) -> String {
-        self.vars.get(key).cloned().unwrap_or_else(|| default.to_string())
+        self.vars
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| default.to_string())
     }
 
     pub fn set(&mut self, key: &str, value: &str) {
