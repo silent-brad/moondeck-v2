@@ -124,17 +124,19 @@ impl<'d> TouchController<'d> {
 
     pub fn poll(&mut self) -> Result<Option<TouchEvent>> {
         let status = self.read_register(GT911_TOUCH_STATUS_REG, 1)?;
-        let num_touches = status[0] & 0x0F;
         let buffer_ready = (status[0] & 0x80) != 0;
 
-        if buffer_ready {
-            self.write_register(GT911_TOUCH_STATUS_REG, &[0])?;
+        if !buffer_ready {
+            // Data is not valid yet — skip this poll cycle
+            return Ok(None);
         }
+
+        let num_touches = status[0] & 0x0F;
+        self.write_register(GT911_TOUCH_STATUS_REG, &[0])?;
 
         if num_touches == 0 {
             // No touch - emit Ended if we had an active touch
             if self.last_touch.take().is_some() {
-                // Return the last known position (most recent position before lift)
                 log::info!(
                     "Touch ended: start=({},{}) last=({},{})",
                     self.start_x,
