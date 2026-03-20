@@ -103,25 +103,32 @@ function M.render(state, gfx)
   end
 
   if state.verse_text then
+    -- Reserve space for the reference line at bottom
+    local ref_h = 30
+    local avail_h = state.height - content_y - py - ref_h
+
     -- Calculate characters per line based on width
-    local chars_per_line = math.floor((state.width - px * 2) / 7)
+    -- Use ~8.5px per char for Inter at size 16 to avoid horizontal overflow
+    local chars_per_line = math.floor((state.width - px * 2) / 9)
     local lines = util.word_wrap(state.verse_text, chars_per_line)
 
     -- Calculate how many lines we can show
     local line_height = 18
-    local max_lines = math.floor((state.height - content_y - 40) / line_height)
-
-    -- Draw verse text
-    for i = 1, #lines do
-      if i > max_lines then
-        -- Show ellipsis on last line
-        gfx:text(px, content_y + (max_lines - 1) * line_height, "...", th.text_secondary, "inter", 16)
-        break
-      end
-      gfx:text(px, content_y + (i - 1) * line_height, lines[i], th.text_secondary, "inter", 16)
+    local max_lines = math.floor(avail_h / line_height)
+    if max_lines < 1 then
+      max_lines = 1
     end
 
-    -- Draw reference at bottom
+    -- Draw verse text
+    for i = 1, math.min(#lines, max_lines) do
+      if i == max_lines and #lines > max_lines then
+        gfx:text(px, content_y + (i - 1) * line_height, lines[i] .. "...", th.text_secondary, "inter", 16)
+      else
+        gfx:text(px, content_y + (i - 1) * line_height, lines[i], th.text_secondary, "inter", 16)
+      end
+    end
+
+    -- Draw reference at bottom (within bounds)
     if state.verse_ref then
       gfx:text(px, state.height - py - 15, "— " .. state.verse_ref, th.text_accent, "inter", 16)
     end

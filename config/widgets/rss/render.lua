@@ -52,15 +52,16 @@ function M.render(state, gfx)
   end
 
   -- Display entries as list
-  local row_height = 45
-  local max_rows = math.floor((state.height - content_y - py - 20) / row_height)
-  local title_max_chars = math.floor((state.width - px * 2) / 7)
+  local footer_h = 20
+  local avail_h = state.height - content_y - py - footer_h
+  local row_height = 35
+  local max_rows = math.floor(avail_h / row_height)
+  if max_rows < 1 then
+    max_rows = 1
+  end
+  local title_max_chars = math.floor((state.width - px * 2 - 15) / 7)
 
-  for i = 1, #state.entries do
-    if i > max_rows then
-      break
-    end
-
+  for i = 1, math.min(#state.entries, max_rows) do
     local entry = state.entries[i]
     local y = content_y + (i - 1) * row_height
 
@@ -69,13 +70,13 @@ function M.render(state, gfx)
 
     -- Title
     local title_text = truncate(entry.title, title_max_chars)
-    gfx:text(px + 15, y, title_text, th.text_primary, "inter", 16)
+    gfx:text(px + 15, y, title_text, th.text_primary, "inter", 14)
 
     -- Feed name
-    gfx:text(px + 15, y + 18, entry.feed, th.text_muted, "inter", 12)
+    gfx:text(px + 15, y + 16, entry.feed, th.text_muted, "inter", 11)
   end
 
-  -- Navigation hint at bottom
+  -- Navigation hint at bottom (within bounds)
   if #state.entries > max_rows then
     local more = #state.entries - max_rows
     gfx:text(px, state.height - py - 5, "+" .. more .. " more", th.text_muted, "inter", 12)

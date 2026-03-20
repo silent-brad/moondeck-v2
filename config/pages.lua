@@ -32,14 +32,11 @@ return {
       layout = "quad",
       widgets = {
         {
-          widget = sysinfo,
-          update_interval = 1000,
-          opts = {},
-        },
-        {
-          widget = weather,
+          widget = chess,
           update_interval = 300000,
-          opts = {},
+          opts = {
+            username = env.get("CHESS_USERNAME"),
+          },
         },
         {
           widget = quote,
@@ -53,24 +50,34 @@ return {
             coins = { "bitcoin", "ethereum", "solana", "monero" },
           },
         },
+        {
+          widget = stocks,
+          update_interval = 300000,
+          opts = {
+            symbols = { "AAPL", "GOOGL", "PLTR", "TSLA", "MO" },
+          },
+        },
       },
     },
 
     {
       id = "dashboard",
       title = "Dashboard",
-      layout = "header_two_col",
+      layout = "cards_4",
       widgets = {
         {
-          widget = chess,
-          update_interval = 300000,
-          opts = {
-            username = env.get("CHESS_USERNAME"),
-          },
+          widget = sysinfo,
+          update_interval = 1000,
+          opts = {},
         },
         {
           widget = status,
           update_interval = 1000,
+          opts = {},
+        },
+        {
+          widget = weather,
+          update_interval = 300000,
           opts = {},
         },
         {
@@ -105,28 +112,13 @@ return {
     },
 
     {
-      id = "stocks",
-      title = "Stocks",
-      layout = "full",
-      widgets = {
-        {
-          widget = stocks,
-          update_interval = 300000,
-          opts = {
-            symbols = { "AAPL", "GOOGL", "PLTR", "TSLA" },
-          },
-        },
-      },
-    },
-
-    {
       id = "heatmap",
       title = "GitHub Heatmap",
       layout = "full",
       widgets = {
         {
           widget = github,
-          update_interval = 3600000,
+          update_interval = 300000,
           opts = {},
         },
       },

@@ -141,8 +141,24 @@ struct PageConfig {
     id: String,
     title: Option<String>,
     layout: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_widgets_vec")]
     widgets: Vec<WidgetConfig>,
+}
+
+/// Empty Lua tables serialize as `{}` (object) rather than `[]` (array).
+/// Accept both forms so pages with no widgets don't fail to parse.
+fn deserialize_widgets_vec<'de, D>(deserializer: D) -> std::result::Result<Vec<WidgetConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let val = serde_json::Value::deserialize(deserializer)?;
+    match val {
+        serde_json::Value::Array(_) => {
+            serde_json::from_value(val).map_err(serde::de::Error::custom)
+        }
+        _ => Ok(Vec::new()),
+    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

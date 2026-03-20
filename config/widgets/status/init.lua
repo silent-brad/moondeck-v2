@@ -67,7 +67,7 @@ end
 function M.render(state, gfx)
   -- Get theme colors directly from the global theme module
   local th = theme:get()
-  local px, py = 20, 15
+  local px, py = 15, 10
 
   -- Draw card
   components.card(gfx, 0, 0, state.width, state.height)
@@ -75,53 +75,46 @@ function M.render(state, gfx)
   -- Title bar
   local title_h = components.title_bar(gfx, px, py, state.width - px * 2, "Status", {
     accent = th.accent_secondary,
+    font_size = 24,
   })
 
-  local content_y = py + title_h + 15
-  local row_height = 28
+  local content_y = py + title_h + 8
+  local row_height = 20
 
   -- WiFi Status
   local wifi_status = state.wifi_connected and "Connected" or "Disconnected"
   local wifi_indicator = state.wifi_connected and "ok" or "error"
 
-  components.status(gfx, px, content_y, "WiFi: " .. wifi_status, wifi_indicator, {})
-
+  components.status(gfx, px, content_y, "WiFi: " .. wifi_status, wifi_indicator, { font_size = 11 })
   content_y = content_y + row_height
 
-  -- SSID
-  if state.wifi_connected and state.wifi_ssid ~= "" then
-    gfx:text(px + 14, content_y, "SSID: " .. state.wifi_ssid, th.text_muted, "inter", 12)
-    content_y = content_y + 20
+  -- SSID + Signal on same line
+  if state.wifi_connected then
+    local strength_text = rssi_to_strength(state.rssi)
+    local info = state.wifi_ssid ~= "" and state.wifi_ssid or ""
+    if info ~= "" then
+      info = info .. "  |  " .. strength_text .. " (" .. state.rssi .. " dBm)"
+    end
+    if info ~= "" then
+      gfx:text(px + 14, content_y, info, th.text_muted, "inter", 11)
+      content_y = content_y + 16
+    end
   end
 
-  -- Signal strength
+  -- IP Address (compact)
   if state.wifi_connected then
-    local strength_text, strength_status = rssi_to_strength(state.rssi)
-    components.status(
-      gfx,
-      px,
-      content_y,
-      "Signal: " .. strength_text .. " (" .. state.rssi .. " dBm)",
-      strength_status,
-      {}
-    )
-    content_y = content_y + row_height
-  end
-
-  -- IP Address
-  if state.wifi_connected then
-    gfx:text(px, content_y, "IP Address", th.text_muted, "inter", 12)
-    gfx:text(px, content_y + 14, state.ip_address, th.text_primary, "inter", 16)
-    content_y = content_y + 35
+    gfx:text(px, content_y, "IP: " .. state.ip_address, th.text_primary, "inter", 12)
+    content_y = content_y + 18
   end
 
   -- Divider
-  components.divider(gfx, px, content_y, state.width - px * 2, { color = th.border_primary })
-  content_y = content_y + 15
+  if content_y + 30 <= state.height then
+    components.divider(gfx, px, content_y, state.width - px * 2, { color = th.border_primary })
+    content_y = content_y + 10
 
-  -- Uptime
-  gfx:text(px, content_y, "Uptime", th.text_muted, "inter", 12)
-  gfx:text(px, content_y + 14, format_uptime(state.uptime), th.text_primary, "inter", 16)
+    -- Uptime
+    gfx:text(px, content_y, "Up: " .. format_uptime(state.uptime), th.text_muted, "inter", 11)
+  end
 end
 
 function M.on_event(state, event)
