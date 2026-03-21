@@ -445,7 +445,7 @@ fn run_loop(
             ctx.clear(bg);
             if let Some(page) = pm.current_page() {
                 let ui_color = Color::from_hex(ThemeColors::text_muted()).unwrap_or(Color::WHITE);
-                ctx.text_ttf(
+                /*ctx.text_ttf(
                     10,
                     DISPLAY_HEIGHT as i32 - 20,
                     &format!(
@@ -463,7 +463,7 @@ fn run_loop(
                     &format!("FPS: {:.1}", timer.fps()),
                     ui_color,
                     TtfFont::inter(18),
-                );
+                );*/
 
                 for (plugin, widget) in plugins.iter() {
                     if page.widgets.iter().any(|w| {

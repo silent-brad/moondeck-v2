@@ -10,7 +10,6 @@
 --   header_two_col - Header row + two columns below
 --   quad          - 2x2 grid
 --   dashboard     - Main area + sidebar widgets
---   cards_4       - Four equal cards in a row
 
 local sysinfo = require("widgets.sysinfo")
 local weather = require("widgets.weather")
@@ -63,7 +62,7 @@ return {
     {
       id = "dashboard",
       title = "Dashboard",
-      layout = "cards_4",
+      layout = "quad",
       widgets = {
         {
           widget = sysinfo,
@@ -118,7 +117,7 @@ return {
       widgets = {
         {
           widget = github,
-          update_interval = 300000,
+          update_interval = 3000,
           opts = {},
         },
       },
