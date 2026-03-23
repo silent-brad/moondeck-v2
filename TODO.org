@@ -27,10 +27,12 @@
 * DONE Brush up loading screen
 * DONE Restructure config
   NOTE: Requiring Lua files will also give the ability to import them from GitHub.
-* TODO Add more widgets
+* DONE Add more widgets
+  CLOSED: [2026-03-23 Mon 12:46]
 * TODO Handle layouts card/component sizing
-  Make more compact?
-* TODO Revise design
-
+  - Make more compact?
+* DONE Revise design
+  CLOSED: [2026-03-23 Mon 12:46]
 * DONE Update docs
+* TODO Make text use grayscale instead of all black
 
