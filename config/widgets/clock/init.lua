@@ -5,7 +5,7 @@ local M = {}
 function M.init(ctx)
   -- Set timezone on init (hours offset from UTC)
   -- Examples: -5 for EST, -4 for EDT, 0 for UTC, 1 for CET
-  local tz_offset = ctx.opts.timezone or -5 -- Default to EST
+  local tz_offset = ctx.opts.timezone or -4 -- Default to EDT
   device.set_timezone(tz_offset)
 
   return {

@@ -75,7 +75,6 @@ function M.render(state, gfx)
   -- Title bar
   local title_h = components.title_bar(gfx, px, py, state.width - px * 2, "Status", {
     accent = th.accent_secondary,
-    font_size = 24,
   })
 
   local content_y = py + title_h + 8
