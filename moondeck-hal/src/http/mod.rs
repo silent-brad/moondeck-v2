@@ -27,6 +27,26 @@ impl HttpClient {
         Self { timeout_ms }
     }
 
+    const MAX_BODY_SIZE: usize = 256 * 1024;
+
+    fn read_body(client: &mut EspHttpConnection) -> Result<String> {
+        let mut body = Vec::new();
+        let mut buf = [0u8; 1024];
+        loop {
+            match client.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    body.extend_from_slice(&buf[..n]);
+                    if body.len() > Self::MAX_BODY_SIZE {
+                        return Err(anyhow::anyhow!("Response body too large"));
+                    }
+                }
+                Err(e) => return Err(anyhow::anyhow!("Read error: {:?}", e)),
+            }
+        }
+        Ok(String::from_utf8_lossy(&body).to_string())
+    }
+
     fn create_config(&self) -> HttpConfig {
         HttpConfig {
             timeout: Some(std::time::Duration::from_millis(self.timeout_ms as u64)),
@@ -45,8 +65,11 @@ impl HttpClient {
         let mut client =
             EspHttpConnection::new(&config).context("Failed to create HTTP connection")?;
 
+        let mut all_headers: Vec<(&str, &str)> = headers.to_vec();
+        all_headers.push(("Connection", "close"));
+
         client
-            .initiate_request(esp_idf_svc::http::Method::Get, url, headers)
+            .initiate_request(esp_idf_svc::http::Method::Get, url, &all_headers)
             .context("Failed to initiate request")?;
 
         client
@@ -54,18 +77,7 @@ impl HttpClient {
             .context("Failed to initiate response")?;
 
         let status = client.status();
-
-        let mut body = Vec::new();
-        let mut buf = [0u8; 1024];
-        loop {
-            match client.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => body.extend_from_slice(&buf[..n]),
-                Err(e) => return Err(anyhow::anyhow!("Read error: {:?}", e)),
-            }
-        }
-
-        let body_str = String::from_utf8_lossy(&body).to_string();
+        let body_str = Self::read_body(&mut client)?;
 
         Ok(HttpResponse {
             status,
@@ -94,6 +106,7 @@ impl HttpClient {
         let mut headers: Vec<(&str, &str)> = vec![
             ("Content-Type", content_type),
             ("Content-Length", &content_len),
+            ("Connection", "close"),
         ];
         headers.extend_from_slice(extra_headers);
 
@@ -112,20 +125,11 @@ impl HttpClient {
             .context("Failed to initiate response")?;
 
         let status = client.status();
-
-        let mut response_body = Vec::new();
-        let mut buf = [0u8; 1024];
-        loop {
-            match client.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => response_body.extend_from_slice(&buf[..n]),
-                Err(e) => return Err(anyhow::anyhow!("Read error: {:?}", e)),
-            }
-        }
+        let body_str = Self::read_body(&mut client)?;
 
         Ok(HttpResponse {
             status,
-            body: String::from_utf8_lossy(&response_body).to_string(),
+            body: body_str,
             headers: HashMap::new(),
         })
     }

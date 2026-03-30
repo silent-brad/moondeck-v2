@@ -107,15 +107,15 @@
             fi
 
             # Only show welcome message once
-            app-build() {
+            build() {
               cargo build --release -p moondeck-app
             }
-            export -f app-build
+            export -f build
 
-            app-flash() {
+            flash() {
               espflash flash target/xtensa-esp32s3-espidf/release/moondeck --partition-table target/xtensa-esp32s3-espidf/release/partition-table.bin --monitor
             }
-            export -f app-flash
+            export -f flash
 
             if [ -z "$MOONDECK_ENV_LOADED" ]; then
               export MOONDECK_ENV_LOADED=1
@@ -123,8 +123,8 @@
               echo "🌙 Moondeck ESP32-S3 Development Environment (FHS)"
               echo ""
               echo "  Build & flash:"
-              echo "    app-build"
-              echo "    app-flash"
+              echo "    build"
+              echo "    flash"
               echo ""
             fi
           '';
