@@ -59,11 +59,12 @@ fn init_lua_and_widgets(
     PageManager,
     Vec<(WidgetPlugin, WidgetInstance)>,
     Color,
+    Option<u64>,
 )> {
     let mut lua = LuaRuntime::new()?.with_config_path(CONFIG_PATH);
     lua.init(env)?;
 
-    let pages = lua.load_pages()?;
+    let (pages, page_switch_interval) = lua.load_pages()?;
     let pm = PageManager::new().with_pages(pages);
     info!("Loaded {} page(s)", pm.page_count());
 
@@ -82,7 +83,7 @@ fn init_lua_and_widgets(
         .collect();
 
     let bg = Color::from_hex(&lua.get_theme_background()).unwrap_or(Color::WHITE);
-    Ok((lua, pm, plugins, bg))
+    Ok((lua, pm, plugins, bg, page_switch_interval))
 }
 
 fn start_http_server(reload_gen: Arc<AtomicU32>) -> Result<EspHttpServer<'static>> {
@@ -241,7 +242,7 @@ fn main() -> Result<()> {
     };
 
     loading(&mut fb, &mut display, "Initializing Lua...", None)?;
-    let (mut lua, mut pm, mut plugins, bg) = init_lua_and_widgets(&env)?;
+    let (mut lua, mut pm, mut plugins, bg, page_switch_interval) = init_lua_and_widgets(&env)?;
 
     loading(&mut fb, &mut display, "Ready!", None)?;
     FreeRtos::delay_ms(300);
@@ -257,6 +258,7 @@ fn main() -> Result<()> {
         fb,
         &fs,
         &reload_gen,
+        page_switch_interval,
     )
 }
 
@@ -376,12 +378,14 @@ fn run_loop(
     mut fb: Framebuffer,
     fs: &FileSystem,
     reload_gen: &AtomicU32,
+    mut page_switch_interval: Option<u64>,
 ) -> Result<()> {
     let mut timer = FrameTimer::new();
     let mut gestures = GestureProcessor::new();
     let mut last_status = 0u64;
     let mut last_page = pm.current_index();
     let mut last_reload = reload_gen.load(Ordering::SeqCst);
+    let mut last_page_switch = now_ms();
 
     loop {
         let now = now_ms();
@@ -398,12 +402,14 @@ fn run_loop(
             }
             draw_loading_screen(&mut fb, display, "Reloading...", None)?;
             match init_lua_and_widgets(&env) {
-                Ok((new_lua, new_pm, new_plugins, new_bg)) => {
+                Ok((new_lua, new_pm, new_plugins, new_bg, new_interval)) => {
                     *lua = new_lua;
                     *pm = new_pm;
                     *plugins = new_plugins;
                     bg = new_bg;
+                    page_switch_interval = new_interval;
                     last_page = pm.current_index();
+                    last_page_switch = now;
                     info!("=== Reload complete ===");
                 }
                 Err(e) => {
@@ -415,7 +421,19 @@ fn run_loop(
         }
 
         // Process touch events
+        let page_before_touch = pm.current_index();
         poll_touch(touch, &mut gestures, pm);
+        if pm.current_index() != page_before_touch {
+            last_page_switch = now;
+        }
+
+        // Auto-switch pages on timer
+        if let Some(interval) = page_switch_interval {
+            if now - last_page_switch >= interval {
+                pm.next_page();
+                last_page_switch = now;
+            }
+        }
 
         // Update status every 5s
         if now - last_status >= 5000 {

@@ -64,14 +64,14 @@ impl LuaRuntime {
         Ok(())
     }
 
-    pub fn load_pages(&mut self) -> Result<Vec<Page>> {
+    pub fn load_pages(&mut self) -> Result<(Vec<Page>, Option<u64>)> {
         self.load_pages_from_config().or_else(|e| {
             log::warn!("Failed to load pages: {}, using demo", e);
-            Ok(vec![Page::new("home", "Home")])
+            Ok((vec![Page::new("home", "Home")], None))
         })
     }
 
-    fn load_pages_from_config(&mut self) -> Result<Vec<Page>> {
+    fn load_pages_from_config(&mut self) -> Result<(Vec<Page>, Option<u64>)> {
         let lua_src = self
             .config_path
             .as_ref()
@@ -105,7 +105,12 @@ impl LuaRuntime {
             return Err(anyhow::anyhow!("pages.lua did not return valid table"));
         }
 
-        parse_pages_json(&json_string)
+        parse_pages_json(&json_string).map(|(pages, interval)| {
+            if let Some(ms) = interval {
+                log::info!("Page auto-switch interval: {}ms", ms);
+            }
+            (pages, interval)
+        })
     }
 
     pub fn lua(&mut self) -> &mut Lua {
@@ -134,6 +139,7 @@ const COLS: i32 = 12;
 #[derive(Debug, Clone, serde::Deserialize)]
 struct PagesConfig {
     pages: Vec<PageConfig>,
+    page_switch_interval: Option<u64>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -219,11 +225,13 @@ fn slot_bounds(col: i32, span: i32, row: i32, row_span: i32, rows: i32) -> (i32,
     (x, y, w as u32, h as u32)
 }
 
-fn parse_pages_json(json_string: &str) -> Result<Vec<Page>> {
+fn parse_pages_json(json_string: &str) -> Result<(Vec<Page>, Option<u64>)> {
     let config: PagesConfig = serde_json::from_str(json_string)
         .with_context(|| format!("Parse error: {}", json_string))?;
 
-    Ok(config
+    let switch_interval = config.page_switch_interval;
+
+    let pages = config
         .pages
         .into_iter()
         .map(|p| {
@@ -257,5 +265,7 @@ fn parse_pages_json(json_string: &str) -> Result<Vec<Page>> {
             }
             page
         })
-        .collect())
+        .collect();
+
+    Ok((pages, switch_interval))
 }

@@ -36,3 +36,7 @@
 * DONE Update docs
 * DONE Make text use grayscale instead of all black
 
+* DONE Make screens switch on timer
+  CLOSED: [2026-03-30 Mon 18:26]
+* TODO Add line graph in UI library
+* TODO Fix HTTP error widget handling

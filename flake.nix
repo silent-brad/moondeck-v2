@@ -6,16 +6,22 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
 
         # FHS environment for ESP-IDF compatibility
         fhs = pkgs.buildFHSEnv {
           name = "moondeck-dev";
-          targetPkgs = pkgs:
-            with pkgs; [
+          targetPkgs =
+            pkgs: with pkgs; [
               # Build essentials
               cmake
               ninja
@@ -101,21 +107,32 @@
             fi
 
             # Only show welcome message once
+            app-build() {
+              cargo build --release -p moondeck-app
+            }
+            export -f app-build
+
+            app-flash() {
+              espflash flash target/xtensa-esp32s3-espidf/release/moondeck --partition-table target/xtensa-esp32s3-espidf/release/partition-table.bin --monitor
+            }
+            export -f app-flash
+
             if [ -z "$MOONDECK_ENV_LOADED" ]; then
               export MOONDECK_ENV_LOADED=1
               echo ""
               echo "🌙 Moondeck ESP32-S3 Development Environment (FHS)"
               echo ""
               echo "  Build & flash:"
-              echo "    cargo build --release -p moondeck-app"
-              echo "    espflash flash target/xtensa-esp32s3-espidf/release/moondeck --partition-table target/xtensa-esp32s3-espidf/release/partition-table.bin --monitor"
+              echo "    app-build"
+              echo "    app-flash"
               echo ""
             fi
           '';
 
           runScript = "bash";
         };
-      in {
+      in
+      {
         # Enter FHS shell with: nix develop
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [ fhs ];
@@ -165,5 +182,6 @@
 
         # Export the FHS env itself
         packages.default = fhs;
-      });
+      }
+    );
 }

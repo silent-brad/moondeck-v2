@@ -24,6 +24,7 @@ local github = require("widgets.github")
 local chess = require("widgets.chess")
 
 return {
+  page_switch_interval = 60000, -- auto-switch pages every 1 minute (nil to disable)
   pages = {
     {
       id = "home",
