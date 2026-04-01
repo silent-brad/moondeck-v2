@@ -1,7 +1,7 @@
-#+TITLE: Moondeck v2
+#+TITLE: Moondeck
 #+DESCRIPTION: Cyberdeck display configured in Lua
 #+AUTHOR: [[https://dev.knightoffaith.systems][Brad White]]
-#+REPOSITORY: https://github.com/silent-brad/moondeck-v2
+#+REPOSITORY: https://github.com/silent-brad/moondeck
 #+DATE: 2026-03-04
 
 Cyberdeck display system for ESP32-S3 color LCD panels, configured entirely in Lua.
@@ -60,7 +60,7 @@ espflash monitor
 * Project Structure
 
 #+begin_src text
-moondeck-v2/
+moondeck/
 ├── moondeck-app/      # Main application binary
 ├── moondeck-core/     # Core types (graphics, UI, events)
 ├── moondeck-hal/      # Hardware abstraction (display, touch, WiFi)

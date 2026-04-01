@@ -42,6 +42,19 @@ fn now_ms() -> u64 {
 fn seed_lua_config(fs: &FileSystem) {
     let _ = fs.create_dir("config");
 
+    // Clean up stale pre-decoded image files from previous builds
+    if let Ok(entries) = std::fs::read_dir("/data/config") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext == "rgb565" {
+                    let _ = std::fs::remove_file(&path);
+                    info!("Cleaned up stale file: {}", path.display());
+                }
+            }
+        }
+    }
+
     // Always overwrite pages.lua with the version embedded in the binary so
     // that changes to config/pages.lua take effect after a rebuild.  Users
     // can still live-edit via the HTTP upload endpoint; those edits persist
@@ -154,7 +167,7 @@ fn start_http_server(reload_gen: Arc<AtomicU32>) -> Result<EspHttpServer<'static
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
     EspLogger::initialize_default();
-    info!("=== Moondeck v2 Starting ===");
+    info!("=== Moondeck Starting ===");
 
     init_boot_time();
     set_current_theme(get_default_theme());
@@ -373,7 +386,7 @@ fn run_loop(
     plugins: &mut Vec<(WidgetPlugin, WidgetInstance)>,
     display: &mut Display,
     touch: &mut TouchController,
-    wifi: Option<WifiManager>,
+    mut wifi: Option<WifiManager>,
     mut bg: Color,
     mut fb: Framebuffer,
     fs: &FileSystem,
@@ -440,8 +453,16 @@ fn run_loop(
         // Update status every 5s
         if now - last_status >= 5000 {
             last_status = now;
-            set_system_info(unsafe { esp_idf_sys::esp_get_free_heap_size() }, 240);
-            if let Some(ref w) = wifi {
+            let free_heap = unsafe { esp_idf_sys::esp_get_free_heap_size() };
+            set_system_info(free_heap, 240);
+            if let Some(ref mut w) = wifi {
+                if !w.is_connected() {
+                    warn!("WiFi disconnected, attempting reconnect...");
+                    match w.reconnect() {
+                        Ok(()) => info!("WiFi reconnected"),
+                        Err(e) => warn!("WiFi reconnect failed: {}", e),
+                    }
+                }
                 let s = w.status();
                 set_wifi_status(
                     s.connected,
@@ -449,6 +470,11 @@ fn run_loop(
                     &s.ip.map(|i| i.to_string()).unwrap_or_default(),
                     s.rssi.unwrap_or(-100) as i32,
                 );
+            }
+            // When heap gets critically low, restart to recover from fragmentation
+            if free_heap < 40_000 {
+                warn!("Heap critically low ({}), restarting to recover", free_heap);
+                unsafe { esp_idf_sys::esp_restart() };
             }
         }
 

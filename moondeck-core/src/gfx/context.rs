@@ -117,15 +117,45 @@ impl<'a, T: DrawTarget<Color = Rgb565>> DrawContext<'a, T> {
     }
 
     pub fn draw_image(&mut self, x: i32, y: i32, pixels: &[u16], img_w: u32, img_h: u32) {
-        for py in 0..img_h as i32 {
-            for px in 0..img_w as i32 {
-                let raw = pixels[(py as u32 * img_w + px as u32) as usize];
-                let r = ((raw >> 11) & 0x1F) as u8;
-                let g = ((raw >> 5) & 0x3F) as u8;
-                let b = (raw & 0x1F) as u8;
-                let color = Rgb565::new(r, g, b);
-                let _ = Pixel(self.pt(x + px, y + py), color).draw(self.target);
+        self.draw_image_scaled(x, y, pixels, img_w, img_h, img_w, img_h);
+    }
+
+    pub fn draw_image_scaled(
+        &mut self,
+        x: i32,
+        y: i32,
+        pixels: &[u16],
+        img_w: u32,
+        img_h: u32,
+        dst_w: u32,
+        dst_h: u32,
+    ) {
+        // Build a row of pre-sampled pixels, then draw the whole row at once
+        // to reduce per-pixel overhead through the DrawTarget trait.
+        let mut row_buf: Vec<Pixel<Rgb565>> = Vec::with_capacity(dst_w as usize);
+        for py in 0..dst_h {
+            let src_y = (py * img_h / dst_h).min(img_h - 1);
+            let dy = y + py as i32 + self.offset_y;
+            if dy < 0 || dy >= DISPLAY_HEIGHT as i32 {
+                continue;
             }
+            row_buf.clear();
+            let src_row = &pixels[(src_y * img_w) as usize..((src_y + 1) * img_w) as usize];
+            for px in 0..dst_w {
+                let dx = x + px as i32 + self.offset_x;
+                if dx < 0 || dx >= DISPLAY_WIDTH as i32 {
+                    continue;
+                }
+                let src_x = (px * img_w / dst_w).min(img_w - 1);
+                let raw = src_row[src_x as usize];
+                let color = Rgb565::new(
+                    ((raw >> 11) & 0x1F) as u8,
+                    ((raw >> 5) & 0x3F) as u8,
+                    (raw & 0x1F) as u8,
+                );
+                row_buf.push(Pixel(Point::new(dx, dy), color));
+            }
+            let _ = self.target.draw_iter(row_buf.drain(..));
         }
     }
 

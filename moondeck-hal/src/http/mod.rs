@@ -87,7 +87,10 @@ impl HttpClient {
                 url,
                 &[
                     ("Connection", "close"),
-                    ("User-Agent", "Moondeck/0.1 (ESP32-S3; +https://github.com/silent-brad/moondeck-v2)"),
+                    (
+                        "User-Agent",
+                        "Moondeck/0.1 (ESP32-S3; +https://github.com/silent-brad/moondeck)",
+                    ),
                 ],
             )
             .context("Failed to initiate request")?;

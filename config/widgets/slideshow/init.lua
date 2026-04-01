@@ -54,14 +54,14 @@ function M.render(state, gfx)
   local w = state.width or 0
   local h = state.height or 0
 
-  components.card(gfx, 0, 0, w, h)
-
   if not state.images or #state.images == 0 then
+    gfx:clear(th.bg_primary)
     gfx:text(20, h / 2, "No images", th.text_muted, "inter", 16)
     return
   end
 
   local path = state.images[state.current or 1]
+  -- Scale image to fill the widget
   gfx:draw_image(0, 0, w, h, path)
 
   local indicator = (state.current or 1) .. "/" .. #state.images

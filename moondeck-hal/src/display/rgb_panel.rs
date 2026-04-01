@@ -40,7 +40,6 @@ impl DisplayConfig {
 pub struct Display {
     panel_handle: sys::esp_lcd_panel_handle_t,
     _backlight_pin: Option<PinDriver<'static, AnyOutputPin, Output>>,
-    fb_ptr: *mut u8,
 }
 
 impl Display {
@@ -156,36 +155,32 @@ impl Display {
                 .context("Failed to initialize panel")?;
         }
 
-        // Get the panel's framebuffer pointer
-        let mut fb_ptrs: [*mut std::ffi::c_void; 2] = [std::ptr::null_mut(); 2];
-        unsafe {
-            sys::esp!(sys::esp_lcd_rgb_panel_get_frame_buffer(
-                panel_handle,
-                1,
-                fb_ptrs.as_mut_ptr()
-            ))
-            .context("Failed to get framebuffer pointer")?;
-        }
-
         log::info!(
-            "Display initialized: {}x{}, fb_ptr: {:?}",
+            "Display initialized: {}x{}",
             DISPLAY_WIDTH,
             DISPLAY_HEIGHT,
-            fb_ptrs[0]
         );
 
         Ok(Self {
             panel_handle,
             _backlight_pin: backlight_driver,
-            fb_ptr: fb_ptrs[0] as *mut u8,
         })
     }
 
     pub fn flush(&mut self, framebuffer: &Framebuffer) -> Result<()> {
-        let src = framebuffer.as_bytes();
-        let size = src.len();
+        // Use esp_lcd_panel_draw_bitmap which handles bounce-buffer synchronization
+        // and cache coherency internally, preventing tearing/flicker that occurs
+        // when manually copying into the DMA framebuffer.
         unsafe {
-            std::ptr::copy_nonoverlapping(src.as_ptr(), self.fb_ptr, size);
+            sys::esp!(sys::esp_lcd_panel_draw_bitmap(
+                self.panel_handle,
+                0,
+                0,
+                DISPLAY_WIDTH as i32,
+                DISPLAY_HEIGHT as i32,
+                framebuffer.as_bytes().as_ptr() as *const std::ffi::c_void,
+            ))
+            .context("Failed to draw bitmap")?;
         }
         Ok(())
     }

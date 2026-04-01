@@ -355,7 +355,7 @@ fn execute_draw_commands<T: DrawTarget<Color = Rgb565>>(
                     }
                 }
                 if let Some(img) = image_cache.get(&path) {
-                    draw_ctx.draw_image(x, y, &img.pixels, img.width, img.height);
+                    draw_ctx.draw_image_scaled(x, y, &img.pixels, img.width, img.height, w, h);
                 }
             }
         }

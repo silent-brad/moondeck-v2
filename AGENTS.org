@@ -1,4 +1,4 @@
-#+TITLE: Moondeck v2 - Agent Instructions
+#+TITLE: Moondeck - Agent Instructions
 
 ** Build Commands
 - ~nix develop~ - Enter development shell (provides ESP toolchain)

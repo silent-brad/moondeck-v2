@@ -1,7 +1,7 @@
 -- Moondeck Utils
 -- Sets up core modules and provides utility functions
 
-print("Moondeck v2 initializing...")
+print("Moondeck initializing...")
 
 -- Load core modules (these are made available globally)
 theme = require("themes")
